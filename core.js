@@ -1,6 +1,6 @@
-/* US Alpha Mobile — πυρήνας: εργαλεία, αποθήκευση στο τηλέφωνο, πηγές δεδομένων, συγχρονισμός, AI.
-   Οι κωδικοί (API keys) αποθηκεύονται ΜΟΝΟ στο τηλέφωνο. Δεν υπάρχει server: το τηλέφωνο μιλά
-   απευθείας με τις πηγές (Massive, Finnhub) και με τον πάροχο AI, αν βάλεις κωδικό. */
+/* US Alpha Mobile — πυρήνας: εργαλεία, αποθήκευση στο τηλέφωνο, δεδομένα από την ανάλυση στο cloud, AI.
+   Η ανάλυση γίνεται κάθε βράδυ στο GitHub (ίδιος αλγόριθμος με το πρόγραμμα του υπολογιστή).
+   Προαιρετικοί κωδικοί (Finnhub για ζωντανές τιμές, Gemini/Claude για συζήτηση) μένουν ΜΟΝΟ στο τηλέφωνο. */
 "use strict";
 
 // ================================================================== εργαλεία
@@ -23,7 +23,7 @@ const dshort = (iso) => (iso ? parseISO(iso).toLocaleDateString("el-GR", { day: 
 const dt = (iso) => (iso ? parseISO(iso).toLocaleString("el-GR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const ago = (ms) => { if (!ms) return "—"; const s = (Date.now() - ms) / 1000; if (s < 90) return "μόλις τώρα"; if (s < 3600) return `πριν ${Math.round(s / 60)}′`; if (s < 86400) return `πριν ${Math.round(s / 3600)} ώρες`; return dday(new Date(ms).toISOString()); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const HZ = { short: "1–5 ημέρες", swing: "Swing", day: "Day trade", invest: "Επένδυση" };
+const HZ = { short: "1–5 ημέρες", swing: "Swing (έως 5 εβδ.)", day: "Day trade αύριο", invest: "Επένδυση" };
 
 const _mem = {};
 const store = {
@@ -58,54 +58,47 @@ function idb() {
 function reqP(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function kvGet(k) { const d = await idb(); return reqP(d.transaction("kv").objectStore("kv").get(k)); }
 async function kvSet(k, v) { const d = await idb(); return new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
-async function dayKeys() { const d = await idb(); return reqP(d.transaction("days").objectStore("days").getAllKeys()); }
-async function dayCount() { const d = await idb(); const all = await reqP(d.transaction("days").objectStore("days").getAll()); return { total: all.length, data: all.filter((x) => x.n > 0).length, first: all.filter((x) => x.n > 0).map((x) => x.d).sort()[0], last: all.filter((x) => x.n > 0).map((x) => x.d).sort().pop() }; }
-async function putDay(rec) { const d = await idb(); return new Promise((res, rej) => { const t = d.transaction("days", "readwrite"); t.objectStore("days").put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
 async function cacheGet(k, ttlMs) { try { const d = await idb(); const v = await reqP(d.transaction("cache").objectStore("cache").get(k)); return v && Date.now() - v.ts < ttlMs ? v.data : null; } catch { return null; } }
 async function cacheSet(k, data) { try { const d = await idb(); const t = d.transaction("cache", "readwrite"); t.objectStore("cache").put({ ts: Date.now(), data }, k); } catch { /* */ } }
 async function wipeAll() { const d = await idb(); for (const s of ["days", "kv", "cache"]) await new Promise((res) => { const t = d.transaction(s, "readwrite"); t.objectStore(s).clear(); t.oncomplete = res; }); }
 
 // ================================================================== ρυθμίσεις (μόνο στο τηλέφωνο)
 const Keys = {
-  get massive() { return store.get("key.massive", ""); }, get finnhub() { return store.get("key.finnhub", ""); },
+  get finnhub() { return store.get("key.finnhub", ""); },
   get gemini() { return store.get("key.gemini", ""); }, get claude() { return store.get("key.claude", ""); },
   set(name, v) { store.set("key." + name, (v || "").trim()); },
   mask(v) { return v ? v.slice(0, 3) + "…" + v.slice(-4) : ""; },
 };
-const Settings = { get years() { return store.get("years", 2); }, set years(v) { store.set("years", v); } };
 
-// ================================================================== Massive (πρώην Polygon): όλη η αγορά, 5 κλήσεις/λεπτό στο δωρεάν
-const Limiter = {
-  calls: [], queue: [], perMin: self.__UAM_TEST_FAST ? 100000 : 5, busy: false,
-  acquire(priority = 0) { return new Promise((res) => { this.queue.push({ priority, res }); this.queue.sort((a, b) => b.priority - a.priority); this.pump(); }); },
-  async pump() {
-    if (this.busy) return; this.busy = true;
-    while (this.queue.length) {
-      const now = Date.now(); this.calls = this.calls.filter((t) => now - t < 61000);
-      if (this.calls.length >= this.perMin) { const wait = 61000 - (now - this.calls[0]); this.nextAt = Date.now() + wait; await sleep(Math.min(wait, 2000)); continue; }
-      this.calls.push(Date.now()); this.nextAt = 0; this.queue.shift().res();
-    }
-    this.busy = false;
+// ================================================================== δεδομένα από την καθημερινή ανάλυση στο cloud
+// Κάθε βράδυ, μετά το κλείσιμο της αγοράς, το GitHub τρέχει τον πλήρη αλγόριθμο (ίδιο με του υπολογιστή)
+// και δημοσιεύει έτοιμα αποτελέσματα. Η εφαρμογή απλώς τα διαβάζει: δεν χρειάζεται κωδικό ούτε server.
+const Data = {
+  snap: null, shards: new Map(), error: null, loadedAt: 0,
+  async load() {
+    try {
+      const r = await fetch("data/snapshot.json", { cache: "no-cache" });
+      if (r.status === 404) { this.error = "pending"; return this.snap; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      this.snap = await r.json(); this.error = null; this.loadedAt = Date.now();
+      this.byT = new Map(this.snap.rows.map((x) => [x.t, x]));
+    } catch (e) { this.error = navigator.onLine === false ? "offline" : e.message; }
+    return this.snap;
   },
-  penalize() { const now = Date.now(); this.calls = Array(this.perMin).fill(now); },
-};
-async function massive(path, params = {}, priority = 0) {
-  if (!Keys.massive) throw new Error("Λείπει ο κωδικός Massive (Ρυθμίσεις)");
-  const qs = new URLSearchParams({ ...params, apiKey: Keys.massive });
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await Limiter.acquire(priority);
-    let r;
-    try { r = await fetch(`https://api.massive.com${path}?${qs}`); }
-    catch { try { r = await fetch(`https://api.polygon.io${path}?${qs}`); } catch (e2) { if (attempt === 3) throw new Error("Δεν υπάρχει σύνδεση στο internet"); await sleep(3000); continue; } }
-    if (r.status === 429) { Limiter.penalize(); continue; }
-    let j = null; try { j = await r.json(); } catch { /* */ }
-    if (r.status === 401) throw new Error("Ο κωδικός Massive δεν είναι σωστός");
-    if (r.status === 403 || j?.status === "NOT_AUTHORIZED") { const e = new Error(j?.message || "Δεν επιτρέπεται στο δωρεάν πρόγραμμα"); e.code = "NA"; throw e; }
-    if (!r.ok) { if (attempt === 3) throw new Error(j?.error || j?.message || `Massive ${r.status}`); await sleep(2000); continue; }
+  row(t) { return this.byT?.get(t) || null; },
+  async stock(t) {
+    const k = t.toUpperCase();
+    if (this.shards.has(k)) return this.shards.get(k);
+    const r = await fetch(`data/s/${encodeURIComponent(k.replace("^", "_").replace("/", "_"))}.json`, { cache: "no-cache" }).catch(() => null);
+    if (!r) throw new Error("Δεν υπάρχει σύνδεση στο internet");
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if (this.shards.size > 25) this.shards.delete(this.shards.keys().next().value);
+    this.shards.set(k, j);
     return j;
-  }
-  throw new Error("Massive: πολλές αποτυχίες");
-}
+  },
+};
 
 // ================================================================== Finnhub: τιμές σε πραγματικό χρόνο, ειδήσεις, θεμελιώδη (60 κλήσεις/λεπτό)
 const FH = { calls: [] };
@@ -130,31 +123,11 @@ async function quote(t) {
   return q && q.c ? { price: q.c, chg: q.dp, prev: q.pc, ts: q.t * 1000, live: true } : null;
 }
 async function quotes(list) { const out = {}; await Promise.all(list.slice(0, 40).map(async (t) => { const q = await quote(t); if (q) out[t] = q; })); return out; }
-async function companyExtras(t) {
-  const today = new Date(), from = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10), to = today.toISOString().slice(0, 10);
-  const later = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
-  if (Keys.finnhub) {
-    const [m, p, n, e] = await Promise.all([finnhub("/stock/metric", { symbol: t, metric: "all" }, 864e5), finnhub("/stock/profile2", { symbol: t }, 7 * 864e5),
-      finnhub("/company-news", { symbol: t, from, to }, 30 * 60000), finnhub("/calendar/earnings", { symbol: t, from: to, to: later }, 864e5)]);
-    return { metric: m?.metric || null, profile: p && p.name ? p : null,
-      news: (n || []).slice(0, 30).map((x) => ({ title: x.headline, summary: x.summary, url: x.url, source: x.source, ts: x.datetime * 1000 })),
-      earnings: e?.earningsCalendar || [], source: "finnhub" };
-  }
-  // χωρίς Finnhub: ειδήσεις και στοιχεία εταιρείας από Massive (μετράνε στο όριο των 5/λεπτό)
-  const out = { metric: null, profile: null, news: [], earnings: [], source: "massive" };
-  const det = await cacheGet("mz:det:" + t, 7 * 864e5) || await massive(`/v3/reference/tickers/${encodeURIComponent(t)}`, {}, 5).then((j) => { cacheSet("mz:det:" + t, j); return j; }).catch(() => null);
-  if (det?.results) out.profile = { name: det.results.name, finnhubIndustry: det.results.sic_description, marketCapitalization: det.results.market_cap ? det.results.market_cap / 1e6 : null, weburl: det.results.homepage_url, description: det.results.description };
-  const nw = await cacheGet("mz:news:" + t, 30 * 60000) || await massive("/v2/reference/news", { ticker: t, limit: 20, order: "desc" }, 5).then((j) => { cacheSet("mz:news:" + t, j); return j; }).catch(() => null);
-  out.news = (nw?.results || []).map((x) => ({ title: x.title, summary: x.description, url: x.article_url, source: x.publisher?.name, ts: Date.parse(x.published_utc) }));
-  return out;
-}
-async function tickerBars(t, years = 2) {
-  const to = new Date().toISOString().slice(0, 10), from = new Date(Date.now() - years * 365 * 864e5).toISOString().slice(0, 10);
-  const ck = "mz:bars:" + t; const c = await cacheGet(ck, 6 * 3600e3); if (c) return c;
-  const j = await massive(`/v2/aggs/ticker/${encodeURIComponent(t)}/range/1/day/${from}/${to}`, { adjusted: "true", sort: "asc", limit: 50000 }, 10);
-  const bars = (j?.results || []).map((b) => ({ d: new Date(b.t).toISOString().slice(0, 10), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }));
-  cacheSet(ck, bars);
-  return bars;
+async function liveNews(t) {
+  if (!Keys.finnhub) return [];
+  const from = new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10), to = new Date().toISOString().slice(0, 10);
+  const n = await finnhub(t ? "/company-news" : "/news", t ? { symbol: t, from, to } : { category: "general" }, 30 * 60000);
+  return (n || []).slice(0, 25).map((x) => ({ title: x.headline, url: x.url, source: x.source, at: new Date(x.datetime * 1000).toISOString() }));
 }
 
 // ================================================================== ημερολόγιο αγοράς ΗΠΑ
@@ -168,15 +141,6 @@ function nyParts(d = new Date()) {
   return { date: `${p.year}-${p.month}-${p.day}`, h: +p.hour % 24, m: +p.minute, wd: p.weekday };
 }
 const isTradingDay = (iso) => { const wd = new Date(iso + "T12:00:00Z").getUTCDay(); return wd > 0 && wd < 6 && !HOLIDAYS.has(iso); };
-function tradingDaysBack(years) {
-  const ny = nyParts(); const out = [];
-  // τα δεδομένα μιας μέρας είναι διαθέσιμα μετά το κλείσιμο (ασφαλώς από τις 17:30 ώρα Ν. Υόρκης)
-  let d = new Date(ny.date + "T12:00:00Z");
-  if (!(ny.h > 17 || (ny.h === 17 && ny.m >= 30))) d = new Date(d.getTime() - 864e5);
-  const stop = new Date(Date.now() - years * 365.25 * 864e5 + 3 * 864e5);
-  while (d > stop) { const iso = d.toISOString().slice(0, 10); if (isTradingDay(iso)) out.push(iso); d = new Date(d.getTime() - 864e5); }
-  return out; // νεότερη πρώτα
-}
 function sessionInfo() {
   // ώρες της (επόμενης) συνεδρίασης σε ώρα Ελλάδας
   const ny = nyParts(); let day = ny.date;
@@ -190,87 +154,6 @@ function sessionInfo() {
   const at = (h, m) => Date.parse(day + "T00:00:00Z") + ((h + off) * 60 + m) * 60000;
   return { day, pre: at(4, 0), open: at(9, 30), close: EARLY.has(day) ? at(13, 0) : at(16, 0), end: at(20, 0) };
 }
-
-// ================================================================== συγχρονισμός όλης της αγοράς
-const Sync = {
-  running: false, stopFlag: false, st: { phase: "idle", done: 0, total: 0, msg: "", error: null, lastAt: store.get("sync.lastAt", 0) },
-  listeners: new Set(),
-  emit() { this.listeners.forEach((f) => { try { f(this.st); } catch { /* */ } }); },
-  async ensureRef(force = false) {
-    const meta = (await kvGet("refAt")) || 0;
-    if (!force && Date.now() - meta < 7 * 864e5 && (await kvGet("ref"))) return;
-    this.st = { ...this.st, phase: "ref", msg: "Λίστα όλων των αμερικανικών μετοχών", done: 0, total: 0 }; this.emit();
-    const ref = {}; let url = "/v3/reference/tickers", params = { market: "stocks", active: "true", limit: 1000 }, pages = 0;
-    while (url && pages < 30 && !this.stopFlag) {
-      const j = await massive(url, params, 1); pages++;
-      for (const x of j.results || []) ref[x.ticker] = { n: x.name, t: x.type, x: x.primary_exchange };
-      this.st.msg = `Λίστα μετοχών: ${Object.keys(ref).length}`; this.emit();
-      if (j.next_url) { const u = new URL(j.next_url); url = u.pathname; params = Object.fromEntries([...u.searchParams].filter(([k]) => k !== "apiKey")); } else url = null;
-    }
-    if (Object.keys(ref).length > 100) { await kvSet("ref", ref); await kvSet("refAt", Date.now()); }
-  },
-  async start({ onBatch } = {}) {
-    if (this.running || !Keys.massive) return;
-    this.running = true; this.stopFlag = false;
-    try {
-      try { await navigator.storage?.persist?.(); } catch { /* */ }
-      await this.ensureRef();
-      const ref = (await kvGet("ref")) || {};
-      const KEEP_ETF = new Set(["SPY", "QQQ", "DIA", "IWM", "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC", "SMH", "XBI"]);
-      const okType = (t) => { const r = ref[t]; if (KEEP_ETF.has(t)) return true; if (r) return ["CS", "ADRC", "ADRP", "ADRS", "OS", "GDR", "NYRS"].includes(r.t); return !/[.\-]/.test(t) && t.length <= 5; };
-      let tickers = (await kvGet("tickers")) || []; const tid = new Map(tickers.map((t, i) => [t, i]));
-      const have = new Set(await dayKeys());
-      const target = tradingDaysBack(Settings.years), todo = target.filter((d) => !have.has(d));
-      const retry = (await kvGet("retryDays")) || {};
-      this.st = { ...this.st, phase: "days", done: target.length - todo.length, total: target.length, error: null }; this.emit();
-      let since = 0, fetched = 0;
-      for (const d of todo) {
-        if (this.stopFlag) break;
-        if (retry[d] && Date.now() - retry[d] < 3 * 3600e3) continue;
-        this.st.msg = `Ημέρα ${dday(d)}`; this.emit();
-        let j;
-        try { j = await massive(`/v2/aggs/grouped/locale/us/market/stocks/${d}`, { adjusted: "true" }, 0); }
-        catch (e) {
-          if (e.code === "NA") {
-            const recent = Date.now() - Date.parse(d) < 5 * 864e5;
-            if (recent) { retry[d] = Date.now(); await kvSet("retryDays", retry); continue; }
-            await putDay({ d, n: 0, na: true }); this.st.done++; this.emit(); continue; // πέρα από το όριο του δωρεάν προγράμματος
-          }
-          throw e;
-        }
-        const res = (j.results || []).filter((x) => x.c >= 1 && x.v > 0 && okType(x.T));
-        if (!res.length) { if (Date.now() - Date.parse(d) < 5 * 864e5) { retry[d] = Date.now(); await kvSet("retryDays", retry); continue; } await putDay({ d, n: 0 }); this.st.done++; this.emit(); continue; }
-        const n = res.length, ids = new Uint16Array(n), o = new Float32Array(n), h = new Float32Array(n), l = new Float32Array(n), c = new Float32Array(n), v = new Float32Array(n);
-        res.forEach((x, k) => { let id = tid.get(x.T); if (id === undefined) { id = tickers.length; tickers.push(x.T); tid.set(x.T, id); } ids[k] = id; o[k] = x.o; h[k] = x.h; l[k] = x.l; c[k] = x.c; v[k] = x.v; });
-        await kvSet("tickers", tickers);
-        await putDay({ d, n, ids, o, h, l, c, v });
-        delete retry[d];
-        this.st.done++; since++; fetched++; this.st.lastAt = Date.now(); store.set("sync.lastAt", this.st.lastAt); this.emit();
-        const cnt = this.st.done;
-        if (onBatch && (cnt === 60 || cnt === 130 || cnt === 260 || cnt === 320 || (since >= 60 && cnt > 320))) { since = 0; onBatch(cnt); }
-      }
-      await kvSet("retryDays", retry);
-      this.st = { ...this.st, phase: "done", msg: "Ενημερωμένο", error: null }; this.emit();
-      if (onBatch && fetched > 0) onBatch(this.st.done, true);
-    } catch (e) {
-      this.st = { ...this.st, phase: "error", error: e.message }; this.emit();
-    } finally { this.running = false; this.emit(); }
-  },
-  stop() { this.stopFlag = true; },
-};
-
-// ================================================================== worker (μηχανή ανάλυσης)
-const Engine = {
-  w: null, seq: 0, pending: new Map(), progress: null, onProgress: null,
-  init() { this.w = new Worker("engine.js"); this.w.onmessage = (e) => { const m = e.data, p = this.pending.get(m.id);
-    if (m.type === "progress") { this.progress = m; this.onProgress?.(m); return; }
-    if (!p) return; this.pending.delete(m.id); this.progress = null; this.onProgress?.(null);
-    if (m.type === "error") p.rej(new Error(m.error)); else p.res(m.result); };
-    this.w.onerror = (e) => { for (const p of this.pending.values()) p.rej(new Error(e.message || "Σφάλμα μηχανής")); this.pending.clear(); };
-  },
-  call(cmd, args) { if (!this.w) this.init(); const id = ++this.seq; return new Promise((res, rej) => { this.pending.set(id, { res, rej }); this.w.postMessage({ id, cmd, args }); }); },
-  busy() { return this.pending.size > 0; },
-};
 
 // ================================================================== AI βοηθός (προαιρετικά: Gemini ή Claude, με κωδικό στο τηλέφωνο)
 const AI = {
