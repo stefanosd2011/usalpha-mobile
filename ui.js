@@ -303,11 +303,11 @@ routes.s = async (ticker) => {
 };
 
 function simpleStock(a) {
-  const s = a.simple || {}, risks = [...(s.risks || []), ...(a.risk?.warnings || [])];
+  const s = a.simple || {}, risks = [...(s.risks || [])];
+  const earnSaid = risks.some((x) => /αποτελέσματα/i.test(x));
+  for (const w of (a.risk?.warnings || [])) if (!(earnSaid && /^Earnings/i.test(w))) risks.push(w);
   const best = a.acc[0];
   for (const c of (best?.conf?.conflicts || [])) risks.push(c);
-  const fm = a.fund?.m || {};
-  if (isNum(fm.days_to_earnings) && fm.days_to_earnings >= 0 && fm.days_to_earnings <= 14) risks.unshift(`Ανακοινώνει αποτελέσματα σε ${fm.days_to_earnings} μέρες (${dshort(fm.earnings_date)}): η τιμή μπορεί να κινηθεί απότομα.`);
   return { tone: s.tone || "neutral", verdict: s.verdict || "—", headline: s.headline || "", pts: s.points || [], model: s.model || [], plan: s.plan || null, risks: [...new Set(risks)].slice(0, 6) };
 }
 function setupCard(a, s0, rej) {
