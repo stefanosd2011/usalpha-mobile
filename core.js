@@ -1,6 +1,6 @@
 /* US Alpha Mobile — πυρήνας: εργαλεία, αποθήκευση στο τηλέφωνο, δεδομένα από την ανάλυση στο cloud, AI.
    Η ανάλυση γίνεται κάθε βράδυ στο GitHub (ίδιος αλγόριθμος με το πρόγραμμα του υπολογιστή).
-   Προαιρετικοί κωδικοί (Finnhub για ζωντανές τιμές, Gemini/Claude για συζήτηση) μένουν ΜΟΝΟ στο τηλέφωνο. */
+   Δεν χρειάζεται κανένας κωδικός: τιμές μέσα στη μέρα έρχονται κι αυτές από το cloud κάθε 30 λεπτά. */
 "use strict";
 
 // ================================================================== εργαλεία
@@ -86,6 +86,19 @@ const Data = {
     return this.snap;
   },
   row(t) { return this.byT?.get(t) || null; },
+  // τιμές μέσα στη μέρα (κάθε 30′ από το cloud, χωρίς κωδικό)
+  quotesAt: 0,
+  async loadQuotes() {
+    try {
+      const r = await fetch("data/quotes.json", { cache: "no-cache" });
+      if (!r.ok) return 0;
+      const j = await r.json();
+      if (!this.snap || !j.day || j.day <= (this.snap.asOf || "")) return 0;
+      const ts = Date.parse(j.at); this.quotesAt = ts;
+      for (const [t, [p, c]] of Object.entries(j.q || {})) if (!App.quotes[t] || App.quotes[t].src === "cloud") App.quotes[t] = { price: p, chg: c, ts, src: "cloud" };
+      return Object.keys(j.q || {}).length;
+    } catch { return 0; }
+  },
   async stock(t) {
     const k = t.toUpperCase();
     if (this.shards.has(k)) return this.shards.get(k);
@@ -120,7 +133,7 @@ async function finnhub(path, params = {}, ttlMs = 0) {
 }
 async function quote(t) {
   const q = await finnhub("/quote", { symbol: t }, 20000);
-  return q && q.c ? { price: q.c, chg: q.dp, prev: q.pc, ts: q.t * 1000, live: true } : null;
+  return q && q.c ? { price: q.c, chg: q.dp, prev: q.pc, ts: q.t * 1000, live: true, src: "finnhub" } : null;
 }
 async function quotes(list) { const out = {}; await Promise.all(list.slice(0, 40).map(async (t) => { const q = await quote(t); if (q) out[t] = q; })); return out; }
 async function liveNews(t) {

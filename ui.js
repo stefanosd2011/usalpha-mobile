@@ -132,6 +132,8 @@ const REGIME = { "Risk-on": { tone: "up", head: "Η αγορά είναι σε �
   "Ουδέτερο": { tone: "neutral", head: "Η αγορά δεν έχει καθαρή κατεύθυνση", label: "Ουδέτερη" } };
 function saveWatch() { store.set("watch", App.watch); }
 const D = () => Data.snap;
+const qTime = (q) => new Date(q.ts).toLocaleTimeString("el-GR", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hour12: false });
+const qChip = (q, asOf) => (q?.src === "finnhub" ? chip("Ζωντανή τιμή", "up") : q?.src === "cloud" ? chip(`Τιμή ${qTime(q)} ώρα Ελλάδας`, "accent") : chip(`Κλείσιμο ${dshort(asOf)}`));
 const validated = () => Object.entries(D()?.model || {}).filter(([, m]) => m.validated).map(([k]) => k);
 
 // ================================================================== router
@@ -171,9 +173,9 @@ routes.home = async () => {
   const lines = (m.simple || []).slice(0, 5);
   const hero = `<section class="band hero"><div class="hero-row"><div style="flex:1;min-width:0"><h1>${R.head}</h1></div>${gauge(m.score, R.label, R.tone)}</div>
     <ul style="margin-top:6px">${lines.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    <div class="small muted" style="margin-top:10px">Ανάλυση ${fmt(d.analyzed, 0)} μετοχών, τιμές κλεισίματος ${dday(d.asOf)}. Ενημερώθηκε ${dt(d.builtAt)}.</div></section>`;
+    <div class="small muted" style="margin-top:10px">Ανάλυση ${fmt(d.analyzed, 0)} μετοχών με τιμές κλεισίματος ${dday(d.asOf)}${Data.quotesAt ? `. Τρέχουσες τιμές: ${dt(new Date(Data.quotesAt).toISOString())}` : ""}.</div></section>`;
   const tile = (t, name) => { const x = d.idx?.[t]; const q = App.quotes[t]; const p = q?.price ?? x?.p, c = q?.chg ?? x?.ch;
-    return `<a class="tile" href="#/s/${t}"><div class="t-name">${name}</div><div class="t-val num">${fmt(p)}</div><div class="t-chg num ${cls(c)}">${pct(c)}${q ? "" : `<span class="muted" style="font-weight:500"> κλείσιμο</span>`}</div>${spark(x?.sp)}</a>`; };
+    return `<a class="tile" href="#/s/${t}"><div class="t-name">${name}</div><div class="t-val num">${fmt(p)}</div><div class="t-chg num ${cls(c)}">${pct(c)}<span class="muted" style="font-weight:500">${q ? ` ${qTime(q)}` : " κλείσιμο"}</span></div>${spark(x?.sp)}</a>`; };
   const tiles = `<section class="band"><div class="tiles">${tile("SPY", "S&P 500 (SPY)")}${tile("QQQ", "Nasdaq 100 (QQQ)")}${tile("DIA", "Dow Jones (DIA)")}${tile("IWM", "Russell 2000 (IWM)")}</div></section>`;
   const sig = d.signals || [];
   const opps = band("Οι καλύτερες ευκαιρίες", sig.length ? sig.slice(0, 5).map(oppCard).join("") : emptyBox("Καμία ευκαιρία σήμερα", "Προτείνεται είσοδος μόνο όταν συμφωνούν τάση, όγκος, μοντέλο και ρίσκο. Η αναμονή είναι κι αυτή θέση."),
@@ -257,7 +259,7 @@ routes.signals = async () => {
 // ================================================================== WATCHLIST
 routes.watch = async () => {
   if (Keys.finnhub) { const q = await quotes(App.watch); Object.assign(App.quotes, q); }
-  $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Watchlist</h1><p>${Keys.finnhub ? "Τιμές σε πραγματικό χρόνο από Finnhub." : "Τιμές κλεισίματος. Με δωρεάν κωδικό Finnhub γίνονται ζωντανές."}</p></div>
+  $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Watchlist</h1><p>${Data.quotesAt ? `Τιμές ${dt(new Date(Data.quotesAt).toISOString())}, ενημέρωση κάθε 30′ όσο είναι ανοιχτή η αγορά.` : "Τιμές κλεισίματος. Όσο είναι ανοιχτή η αγορά ενημερώνονται κάθε 30′."}</p></div>
     <form id="wf" style="display:flex;gap:8px"><input class="input" id="wIn" placeholder="Σύμβολο, π.χ. AEHR" autocapitalize="characters" autocomplete="off"><button class="btn primary" aria-label="Προσθήκη">${icon("plus")}</button></form>
     ${band("", App.watch.map((t) => { const r = Data.row(t) || { t, n: "Εκτός ανάλυσης", sp: [], p: null, ch: null, s: null };
       return `<div style="display:grid;grid-template-columns:1fr 44px;align-items:center">${rowItem(r)}<button class="icon-btn" style="border:0;background:none" data-del="${esc(t)}" aria-label="Αφαίρεση ${esc(t)}">${icon("trash")}</button></div>`; }).join("") || emptyBox("Άδεια watchlist"), { flush: true })}</div>`;
@@ -271,9 +273,10 @@ routes.s = async (ticker) => {
   ticker = (ticker || "").toUpperCase();
   const view = $("#view");
   view.innerHTML = `<div class="loading"><span class="spinner"></span>Ανάλυση ${esc(ticker)}…</div>`;
-  const [a, q] = await Promise.all([Data.stock(ticker), quote(ticker.replace("^", ""))]);
+  const [a, fq] = await Promise.all([Data.stock(ticker), quote(ticker.replace("^", ""))]);
   if (App.route !== "s") return;
-  if (q) App.quotes[ticker] = q;
+  if (fq) App.quotes[ticker] = fq;
+  const q = App.quotes[ticker] || null;
   if (!a) {
     view.innerHTML = `<div class="stack">${band("", `<div class="stock-head"><div class="t1"><div><h1>${esc(ticker)}</h1></div>${q ? `<div><div class="pv num">${money(q.price)}</div><div class="pc num ${cls(q.chg)}">${pct(q.chg)}</div></div>` : ""}</div></div>`)}
       ${band("", emptyBox(`Η ${esc(ticker)} δεν είναι στην ανάλυση`, "Αναλύονται όλες οι μετοχές NASDAQ, NYSE και AMEX με τιμή πάνω από 1$ και αρκετό τζίρο. Έλεγξε ότι το σύμβολο είναι σωστό."))}</div>`;
@@ -290,7 +293,7 @@ routes.s = async (ticker) => {
   view.innerHTML = `<div class="stack"><section class="band"><div class="stock-head">
       <div class="t1"><div style="min-width:0"><h1>${esc(ticker)}</h1><div class="nm" style="font-size:14px">${esc(a.name || "")}</div></div>
         <div><div class="pv num">${money(price)}</div><div class="pc num ${cls(chg)}">${pct(chg)}</div></div></div>
-      <div class="chips">${q ? chip("Ζωντανή τιμή", "up") : chip(`Κλείσιμο ${dshort(a.asOf)}`)}${a.sector ? chip(esc(a.sector)) : ""}${biasChip(a.sc.bias)}</div>
+      <div class="chips">${qChip(q, a.asOf)}${a.sector ? chip(esc(a.sector)) : ""}${biasChip(a.sc.bias)}</div>
       <div class="grid2"><button class="btn primary" data-ask="${esc(ticker)}">${icon("chat")}Εξήγησέ μου</button><button class="btn" id="wBtn">${icon("star")}${inW ? "Στη watchlist" : "Watchlist"}</button></div></div>
     <div class="tabs" role="tablist">${STABS.map(([k, l]) => `<button type="button" data-st="${k}" class="${k === tab ? "on" : ""}">${l}</button>`).join("")}</div></section><div id="stab" class="stack"></div></div>`;
   const show = (k) => { store.set("stab", k); $$("[data-st]").forEach((b) => b.classList.toggle("on", b.dataset.st === k)); disposeCharts(); $("#stab").innerHTML = STOCK_TABS[k](a, price); if (k === "ov") drawChart(a); if (k === "news") loadLiveNews(a); };
@@ -432,7 +435,7 @@ routes.news = async () => {
 routes.more = async () => {
   const item = (href, ic, t, sub) => `<a class="row" style="grid-template-columns:28px 1fr" href="${href}">${icon(ic)}<div><div style="font-weight:650">${t}</div><div class="nm">${sub}</div></div></a>`;
   $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Περισσότερα</h1></div>${band("", item("#/model", "model", "Μοντέλο πρόβλεψης", "Πώς ελέγχθηκε και αν επικυρώθηκε") + item("#/news", "info", "Ειδήσεις", "Αγορά και μετοχές")
-    + item("#/data", "data", "Δεδομένα", "Πότε ενημερώθηκε, πηγές, έλεγχοι") + item("#/settings", "key", "Ρυθμίσεις", "Προαιρετικοί κωδικοί, εμφάνιση") + item("#/guide", "info", "Οδηγός", "Εγκατάσταση στο iPhone, τι να περιμένεις"), { flush: true })}
+    + item("#/data", "data", "Δεδομένα", "Πότε ενημερώθηκε, πηγές, έλεγχοι") + item("#/settings", "theme", "Εμφάνιση", "Φωτεινό ή σκούρο θέμα") + item("#/guide", "info", "Οδηγός", "Εγκατάσταση στο iPhone, τι να περιμένεις"), { flush: true })}
     <div class="note">US Alpha Mobile: ανάλυση και προτάσεις, όχι επενδυτική συμβουλή. Καμία αυτόματη εντολή.</div></div>`;
 };
 routes.model = async () => {
@@ -458,38 +461,21 @@ routes.data = async () => {
   $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Δεδομένα</h1><p>Η ανάλυση γίνεται κάθε βράδυ στο cloud, μετά το κλείσιμο της αγοράς ΗΠΑ.</p></div>${freshness()}
     ${d ? band("Τελευταία ανάλυση", kv([["Ενημερώθηκε", dt(d.builtAt)], ["Τιμές κλεισίματος", dday(d.asOf)], ["Μετοχές σε ανάλυση", fmt(d.analyzed, 0)], ["Μετοχές με ιστορικό", fmt(d.histTickers, 0)],
       ["Ιστορικό", `${d.historyYears} χρόνια (από ${dday(d.firstDate)})`], ["Ενεργές ευκαιρίες", (d.signals || []).length], ["Επόμενη ενημέρωση", "Κάθε βράδυ Δευτ.–Παρ., γύρω στα μεσάνυχτα ώρα Ελλάδας"], ["Φορτώθηκε στο τηλέφωνο", ago(Data.loadedAt)]])) : ""}
-    ${band("Πηγές", `<ul class="list"><li><b>Τιμές:</b> Yahoo Finance, ημερήσιες, όλες οι μετοχές NASDAQ/NYSE/AMEX.</li><li><b>Λίστα μετοχών:</b> Nasdaq Trader και SEC.</li><li><b>Οικονομικά:</b> SEC (επίσημες καταθέσεις XBRL) και Yahoo.</li><li><b>Ειδήσεις:</b> Yahoo, Google News, με ημερομηνία και πηγή.</li>${Keys.finnhub ? "<li><b>Ζωντανές τιμές:</b> Finnhub, με τον κωδικό σου.</li>" : ""}</ul>`)}
+    ${band("Πηγές", `<ul class="list"><li><b>Τιμές:</b> Yahoo Finance, ημερήσιες, όλες οι μετοχές NASDAQ/NYSE/AMEX.</li><li><b>Λίστα μετοχών:</b> Nasdaq Trader και SEC.</li><li><b>Οικονομικά:</b> SEC (επίσημες καταθέσεις XBRL) και Yahoo.</li><li><b>Ειδήσεις:</b> Yahoo, Google News, με ημερομηνία και πηγή.</li><li><b>Τιμές μέσα στη μέρα:</b> Yahoo Finance, κάθε 30′ όσο είναι ανοιχτή η αγορά.</li></ul>`)}
     ${d?.run?.notes ? band("Σημειώσεις ανάλυσης", `<pre class="small soft" style="white-space:pre-wrap;margin:0">${esc(d.run.notes)}</pre>`) : ""}
     <button class="btn block" id="rl">${icon("refresh")}Φόρτωσε ξανά</button></div>`;
   $("#rl").addEventListener("click", async () => { await Data.load(); toast(Data.snap ? "Ενημερώθηκε" : "Δεν φορτώθηκε"); router({ soft: true }); });
 };
 routes.settings = async () => {
-  const keyField = (k, label, help, ph) => `<label class="field"><span><b>${label}</b> ${Keys[k] ? chip(`Ορισμένο ${esc(Keys.mask(Keys[k]))}`, "up") : chip("Κενό")}</span>
-    <span style="display:flex;gap:8px"><input class="input" type="password" name="${k}" placeholder="${Keys[k] ? "Νέος κωδικός για αλλαγή" : ph}" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="btn" data-test="${k}">Δοκιμή</button></span><span class="small muted">${help}</span></label>`;
-  $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Ρυθμίσεις</h1><p>Η εφαρμογή δουλεύει χωρίς κωδικούς. Αυτοί εδώ είναι προαιρετικοί και μένουν μόνο σε αυτό το τηλέφωνο.</p></div>
-    ${band("Προαιρετικοί κωδικοί", `<form id="kf" class="form">${keyField("finnhub", "Finnhub", "Ζωντανές τιμές μέσα στη μέρα και τελευταίες ειδήσεις. Δωρεάν στο finnhub.io/register.", "Επικόλληση κωδικού")}
-      ${keyField("gemini", "Google Gemini", "Για ελεύθερη συζήτηση με τον βοηθό. Δωρεάν στο aistudio.google.com/apikey.", "Επικόλληση κωδικού")}
-      ${keyField("claude", "Claude", "Εναλλακτικά του Gemini, από console.anthropic.com.", "Επικόλληση κωδικού")}
-      <button class="btn primary block">Αποθήκευση</button></form>`)}
-    ${band("Εμφάνιση", `<button class="btn block" id="themeBtn2">${icon("theme")}Φωτεινό / σκούρο θέμα</button>`)}</div>`;
-  $("#kf").addEventListener("submit", (e) => { e.preventDefault(); let n = 0; new FormData(e.target).forEach((v, k) => { if (v.trim()) { Keys.set(k, v); n++; } }); if (!n) return toast("Δεν γράφτηκε κανένας κωδικός");
-    toast("Αποθηκεύτηκε"); store.set("ai.geminiModel", ""); refreshQuotes(); router({ soft: true }); });
-  $$("[data-test]").forEach((b) => b.addEventListener("click", async () => {
-    const k = b.dataset.test, inp = $(`input[name=${k}]`); if (inp.value.trim()) Keys.set(k, inp.value);
-    b.disabled = true; b.textContent = "…";
-    try {
-      if (k === "finnhub") { const q = await finnhub("/quote", { symbol: "AAPL" }); toast(q?.c ? `Finnhub: λειτουργεί (AAPL ${fmt(q.c)})` : esc(FH.error || "Finnhub: δεν απάντησε"), q?.c ? "info" : "high"); }
-      else { const r = k === "gemini" ? await AI.gemini("Απάντα σύντομα.", "Γράψε μόνο: ΟΚ") : await AI.claude("Απάντα σύντομα.", "Γράψε μόνο: ΟΚ"); toast(`${k === "gemini" ? "Gemini" : "Claude"}: ${esc(r.slice(0, 40))}`); }
-    } catch (e) { toast(esc(e.message), "high"); }
-    b.disabled = false; b.textContent = "Δοκιμή";
-  }));
+  $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Εμφάνιση</h1><p>Η εφαρμογή δεν χρειάζεται κωδικούς ούτε ρυθμίσεις: όλα έρχονται έτοιμα από την ανάλυση στο cloud.</p></div>
+    ${band("Θέμα", `<button class="btn block" id="themeBtn2">${icon("theme")}Φωτεινό / σκούρο θέμα</button>`)}</div>`;
   $("#themeBtn2").addEventListener("click", toggleTheme);
 };
 routes.guide = async () => {
   $("#view").innerHTML = `<div class="stack"><div class="page-head"><h1>Οδηγός</h1></div>${band("Εγκατάσταση στο iPhone", installSteps())}
     ${band("Τι να περιμένεις", `<ul class="list"><li>Κάθε βράδυ (Δευτέρα–Παρασκευή), μετά το κλείσιμο της αμερικανικής αγοράς, γίνεται αυτόματα πλήρης ανάλυση όλης της αγοράς στο cloud. Ο υπολογιστής σου δεν χρειάζεται να είναι ανοιχτός.</li>
-      <li>Το πρωί βρίσκεις έτοιμες τις ευκαιρίες για την επόμενη συνεδρίαση, με είσοδο, stop και στόχους.</li><li>Οι τιμές είναι κλεισίματος. Με δωρεάν κωδικό Finnhub (Ρυθμίσεις) βλέπεις και ζωντανές τιμές μέσα στη μέρα.</li>
-      <li>Ο βοηθός εξηγεί κάθε μετοχή με τους κανόνες του συστήματος. Με κωδικό Gemini ή Claude μπορείς να συζητάς ελεύθερα.</li><li>Είναι ανάλυση, όχι επενδυτική συμβουλή. Καμία αυτόματη εντολή.</li></ul>`)}</div>`;
+      <li>Το πρωί βρίσκεις έτοιμες τις ευκαιρίες για την επόμενη συνεδρίαση, με είσοδο, stop και στόχους.</li><li>Όσο είναι ανοιχτή η αμερικανική αγορά (16:30–23:00 ώρα Ελλάδας), οι τιμές ενημερώνονται κάθε 30 λεπτά, με καθυστέρηση έως ~15 λεπτά από την πηγή.</li>
+      <li>Ο βοηθός εξηγεί απλά κάθε μετοχή και την αγορά, με τα στοιχεία του συστήματος. Δεν χρειάζεται κανένας κωδικός.</li><li>Είναι ανάλυση, όχι επενδυτική συμβουλή. Καμία αυτόματη εντολή.</li></ul>`)}</div>`;
 };
 function installSteps() {
   return `<ol class="steps"><li><div>Άνοιξε αυτή τη σελίδα στο <b>Safari</b> του iPhone.</div></li><li><div>Πάτα το κουμπί <b>Κοινοποίηση</b> ${icon("share")} κάτω στη μέση.</div></li><li><div>Διάλεξε <b>«Προσθήκη στην οικ. οθόνη»</b> και μετά «Προσθήκη».</div></li><li><div>Άνοιγε την εφαρμογή από το εικονίδιο <b>US Alpha</b> στην αρχική οθόνη.</div></li></ol>`;
@@ -535,7 +521,7 @@ function openBot(ticker) {
 function botRender() {
   const box = $("#bMsgs"); if (!box) return;
   box.innerHTML = (bot.hist.length ? bot.hist.map((m) => `<div class="msg ${m.r === "u" ? "user" : "bot"}">${m.r === "u" ? esc(m.t) : md(m.t)}</div>`).join("")
-    : `<div class="msg bot">Γεια! Γράψε ένα σύμβολο (π.χ. <b>AEHR</b>) και σου την εξηγώ απλά: αν υπάρχει ευκαιρία, πού μπαίνεις, πού βγαίνεις και τι ρισκάρεις. Ή ρώτα «τι κάνει η αγορά σήμερα;».${AI.enabled() ? "" : "<br><br><span class='muted'>Απαντώ με τους κανόνες του συστήματος. Με κωδικό Gemini ή Claude (Ρυθμίσεις) μπορούμε να συζητάμε ελεύθερα.</span>"}</div>`)
+    : `<div class="msg bot">Γεια! Γράψε ένα σύμβολο (π.χ. <b>AEHR</b>) και σου την εξηγώ απλά: αν υπάρχει ευκαιρία, πού μπαίνεις, πού βγαίνεις και τι ρισκάρεις. Ή ρώτα «τι κάνει η αγορά σήμερα;».</div>`)
     + (bot.busy ? `<div class="msg bot thinking">Αναλύω…</div>` : "");
   box.scrollTop = box.scrollHeight;
   const t = bot.ticker, chips = t ? [`Εξήγησέ μου την ${t}`, `Πού να βάλω stop στην ${t};`, `Ποια τα ρίσκα της ${t};`] : ["Τι κάνει η αγορά σήμερα;", "Ποιες είναι οι καλύτερες ευκαιρίες;", "Τι βλέπει το μοντέλο;"];
@@ -594,6 +580,7 @@ async function botAsk(text) {
 
 // ================================================================== ζωντανές τιμές (προαιρετικά)
 async function refreshQuotes() {
+  await Data.loadQuotes();
   if (!Keys.finnhub) return;
   const d = D(), list = [...new Set([...App.watch, ...(d?.signals || []).slice(0, 12).map((s) => s.ticker), "SPY", "QQQ", "DIA", "IWM"])];
   Object.assign(App.quotes, await quotes(list));
@@ -616,12 +603,13 @@ async function boot() {
   if (location.hash === "#/welcome") location.hash = "#/home";
   await Data.load();
   router();
-  refreshQuotes().then(() => { if (Keys.finnhub && ["home", "watch", "signals"].includes(App.route)) router({ soft: true }); });
+  refreshQuotes().then(() => { if (Object.keys(App.quotes).length && ["home", "watch", "signals", "scan"].includes(App.route)) router({ soft: true }); });
+  setInterval(() => { if (document.visibilityState === "visible") refreshQuotes().then(() => { if (["home", "watch", "signals"].includes(App.route)) router({ soft: true }); }); }, 5 * 60000);
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;
     renderSession();
     if (Date.now() - Data.loadedAt > 15 * 60000) { const old = Data.snap?.builtAt; await Data.load(); if (Data.snap?.builtAt !== old && !["s"].includes(App.route)) { Data.shards.clear(); router({ soft: true }); toast("Νέα ανάλυση φορτώθηκε"); } }
-    refreshQuotes().then(() => { if (Keys.finnhub && ["home", "watch", "signals"].includes(App.route)) router({ soft: true }); });
+    refreshQuotes().then(() => { if (["home", "watch", "signals"].includes(App.route)) router({ soft: true }); });
   });
 }
 boot();
