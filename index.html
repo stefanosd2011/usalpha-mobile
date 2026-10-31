@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="el" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>US Alpha</title>
+<meta name="description" content="Ανάλυση όλης της αμερικανικής αγοράς μέσα στο τηλέφωνο: ευκαιρίες, stop, στόχοι, μοντέλο πρόβλεψης.">
+<meta name="theme-color" content="#0d1424">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="US Alpha">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@300..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="top-row">
+    <a class="brand" href="#/home" aria-label="US Alpha, αρχική"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24 L12 14 L18 19 L28 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="7" r="3" fill="currentColor"/></svg>US Alpha</a>
+    <div class="top-actions"><button class="icon-btn" id="searchBtn" aria-label="Αναζήτηση μετοχής"></button><button class="icon-btn" id="themeBtn" aria-label="Φωτεινό ή σκούρο θέμα"></button></div>
+  </div>
+  <div class="session" id="session" aria-live="polite"></div>
+</header>
+<main id="view" class="view" tabindex="-1"><div class="loading"><span class="spinner"></span>Φόρτωση…</div></main>
+<nav class="tabbar" id="tabbar" aria-label="Κύρια πλοήγηση"></nav>
+<button class="bot-fab" id="botFab" aria-label="Βοηθός"></button>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<noscript>Η εφαρμογή χρειάζεται JavaScript.</noscript>
+<script src="js/core.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
