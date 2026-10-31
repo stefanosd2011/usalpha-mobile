@@ -1,0 +1,65 @@
+# Όσο είναι ανοιχτή η αγορά ΗΠΑ: τρέχουσες τιμές για όλες τις μετοχές κάθε 30 λεπτά, χωρίς κωδικούς.
+# Χρησιμοποιεί την τελευταία βραδινή ανάλυση (cache) και προσθέτει μόνο το data/quotes.json.
+name: Τιμές μέσα στη μέρα
+
+on:
+  schedule:
+    - cron: "7,37 13-21 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      deploy: ${{ steps.q.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Τελευταία βραδινή ανάλυση
+        uses: actions/cache/restore@v4
+        with:
+          path: _site
+          key: usalpha-site-v1-${{ github.run_id }}
+          restore-keys: usalpha-site-v1-
+
+      - name: Τρέχουσες τιμές
+        id: q
+        env:
+          PYTHONWARNINGS: "ignore"
+        run: |
+          mkdir -p eng && tar -xzf engine.tgz -C eng
+          pip install --disable-pip-version-check -q "yfinance>=0.2.54" pandas
+          mkdir -p _site/data
+          python eng/tools/quotes_mobile.py _site ${{ github.event_name != 'schedule' && '--force' || '' }}
+          cp index.html app.css core.js ui.js sw.js manifest.webmanifest *.png _site/
+          touch _site/.nojekyll
+
+      - if: steps.q.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
