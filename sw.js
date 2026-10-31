@@ -1,7 +1,7 @@
 /* Service worker: η εφαρμογή ανοίγει και χωρίς σύνδεση. Τα δεδομένα αγοράς ΔΕΝ περνούν από εδώ. */
-const VERSION = "uam-v1";
-const SHELL = ["./", "index.html", "app.css", "js/core.js", "js/ui.js", "js/engine.js", "manifest.webmanifest",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
+const VERSION = "uam-v2";
+const SHELL = ["./", "index.html", "app.css", "core.js", "ui.js", "engine.js", "manifest.webmanifest",
+  "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 const CDN = /^https:\/\/(unpkg\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

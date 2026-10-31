@@ -262,7 +262,7 @@ const Sync = {
 // ================================================================== worker (μηχανή ανάλυσης)
 const Engine = {
   w: null, seq: 0, pending: new Map(), progress: null, onProgress: null,
-  init() { this.w = new Worker("js/engine.js"); this.w.onmessage = (e) => { const m = e.data, p = this.pending.get(m.id);
+  init() { this.w = new Worker("engine.js"); this.w.onmessage = (e) => { const m = e.data, p = this.pending.get(m.id);
     if (m.type === "progress") { this.progress = m; this.onProgress?.(m); return; }
     if (!p) return; this.pending.delete(m.id); this.progress = null; this.onProgress?.(null);
     if (m.type === "error") p.rej(new Error(m.error)); else p.res(m.result); };
