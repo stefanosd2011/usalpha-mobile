@@ -65,7 +65,7 @@ jobs:
 
       - name: Συναρμολόγηση εφαρμογής
         run: |
-          cp index.html app.css core.js ui.js sw.js manifest.webmanifest *.png _site/
+          cp index.html app.css *.js manifest.webmanifest *.png _site/
           touch _site/.nojekyll
           du -sh _site; ls _site/data | head
 
