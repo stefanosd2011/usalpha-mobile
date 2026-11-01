@@ -111,7 +111,7 @@ const Data = {
       const r = await fetch("data/ai.json", { cache: "no-cache" });
       if (!r.ok) return null;
       const j = await r.json();
-      if (j && (j.market || Object.keys(j.stocks || {}).length)) { this.ai = j; cacheSet("ai", j); }
+      if (j && (j.market || j.brief || Object.keys(j.stocks || {}).length)) { this.ai = j; cacheSet("ai", j); }
     } catch { /* χωρίς AI η εφαρμογή δουλεύει κανονικά */ }
     return this.ai;
   },

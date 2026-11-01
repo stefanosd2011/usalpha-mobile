@@ -296,6 +296,7 @@ async function answer(text) {
   if (/ανεβηκ|κερδισμεν|πιο πολυ ανεβ|gainers|μεγαλυτερ.*ανοδ/.test(p)) return moversText("up");
   if (/επεσαν|χαμεν|losers|μεγαλυτερ.*πτωσ|πτωσεις/.test(p)) return moversText("down");
   if (/ογκο|volume/.test(p)) return moversText("vol");
+  if (!tk && typeof briefText === "function" && /ενημερωσ|πρωιν|πριν (το|ν?α) ανοι|premarket|pre-market|futures|συμβολαια|τι εγινε (σημερα|χθες|στις αγορες)|πως εκλεισ|κλεισιμο|ασια|ευρωπ/.test(p)) return briefText();
   if (/προβλεψεις μου|τις εταιρειες μου|my predictions/.test(p)) return myText();
   if (/χαρτοφυλακ|portfolio|τις θεσεις μου|πως παει το πορτοφολ/.test(p)) return pfText();
   if (/στοχο|στοχος|διπλασιασ|να τα κανω|να φτασω/.test(p)) return goalText();
@@ -319,7 +320,7 @@ function aiContext(tk) {
     day_trades: (d?.day?.long || []).slice(0, 6).map((c) => ({ ticker: c.ticker, entry: [c.entryLow, c.entryHigh], stop: c.stop, targets: [c.tp1, c.tp2], why: c.reasons })),
     models_validated: Object.fromEntries(Object.entries(d?.model || {}).map(([k, m]) => [k, !!m.validated])),
     model_v4: Object.fromEntries(Object.entries(d?.model4?.models || {}).map(([k, m]) => [k, { active: !!m.active, better_than_v3: !!m.better }])),
-    ai_market_note: Data.ai?.market || null, my_companies: myList().slice(0, 15),
+    ai_market_note: Data.ai?.market || null, ai_brief_now: typeof briefCtx === "function" ? briefCtx() : null, my_companies: myList().slice(0, 15),
     portfolio: PF.list.length ? (() => { const q = pfCalc(); return { value_usd: Math.round(q.val), pl_pct: q.plPct, score: q.score, daily_move_pct: q.sd * 100,
       holdings: q.hs.map((h) => ({ ticker: h.t, shares: h.sh, buy_price: h.px, pl_pct: h.plPct, weight: h.w, system_view: pfAdvice(h).head })) }; })() : null,
     goal: PF.goal ? { ...PF.goal, required_annual_return: needAnnual(PF.goal.start, PF.goal.target, PF.goal.months, PF.goal.monthly || 0) } : null,

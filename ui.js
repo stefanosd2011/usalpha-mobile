@@ -193,7 +193,8 @@ routes.home = async () => {
   const my = myList();
   const mine = my.length ? `${sec("Οι προβλέψεις μου", `<a class="more" href="#/my">Ρυθμίσεις</a>`)}<div class="hscroll">${my.slice(0, 12).map(myCard).join("")}</div>`
     : card(`<div class="cta-row"><span class="c">${icon("star")}</span><div><b>Οι προβλέψεις μου</b><div class="nm">Διάλεξε εταιρείες και δες εδώ κάθε μέρα τι προβλέπουν τα μοντέλα.</div></div><a class="btn sm" href="#/my">Διάλεξε</a></div>`);
-  const ai = Data.ai?.market ? card(`<div class="ai-head">${icon("spark")}<b>Σύνοψη AI</b><span class="muted small">${Data.ai.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.ai.market)}</p><div class="small muted">Γράφτηκε από AI μόνο με τα δεδομένα του συστήματος. Μπορεί να κάνει λάθος.</div>`) : "";
+  const bh = typeof briefHomeCard === "function" ? briefHomeCard() : "";
+  const ai = bh || (Data.ai?.market ? card(`<div class="ai-head">${icon("spark")}<b>Σύνοψη AI</b><span class="muted small">${Data.ai.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.ai.market)}</p><div class="small muted">Γράφτηκε από AI μόνο με τα δεδομένα του συστήματος. Μπορεί να κάνει λάθος.</div><a class="btn sm brief-more" href="#/brief">Ενημερώσεις AI</a>`) : "");
   const dl = d.day?.long || [];
   const day = `${sec("Day trade για αύριο", `<a class="more" href="#/day">Όλα</a>`)}${dl.length ? `<div class="hscroll">${dl.slice(0, 6).map((x) => tradeCard(x, "day")).join("")}</div>` : card(dayEmpty(d, "Καμία υποψήφια σήμερα", "Δεν βρέθηκε μετοχή που να περνά όλα τα κριτήρια για day trade."))}`;
   const sig = d.signals || [];
@@ -210,7 +211,7 @@ routes.home = async () => {
   const sectors = secs.length ? `${sec("Κλάδοι", "", "vs S&P 500, 1 μήνας")}${card(secs.map((s) => `<a class="sector-row" href="#/s/${encodeURIComponent(s.etf || "")}"><span>${esc(s.sector)}</span><span class="bar"><i style="${s.rel21 >= 0 ? "left:50%" : "right:50%"};width:${(Math.abs(s.rel21) / mx * 50).toFixed(1)}%;background:${s.rel21 >= 0 ? "var(--up)" : "var(--down)"}"></i></span><b class="num ${cls(s.rel21)}" style="text-align:right">${pct(s.rel21, 1)}</b></a>`).join(""), "flush")}` : "";
   const news = (d.news || []).length ? `${sec("Ειδήσεις", `<a class="more" href="#/news">Όλες</a>`)}${card(d.news.slice(0, 5).map(newsItem).join(""), "flush")}` : "";
   const pfc = typeof pfHomeCard === "function" ? pfHomeCard() : "";
-  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${pfc}${mine}${ai}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
+  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${ai}${pfc}${mine}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
     <div class="small muted" style="text-align:center">Ανάλυση ${fmt(d.analyzed, 0)} μετοχών, κλείσιμο ${dday(d.asOf)}, ενημέρωση ${dt(d.builtAt)}. Ανάλυση, όχι επενδυτική συμβουλή.</div></div>`;
   $$("[data-mv]").forEach((b) => b.addEventListener("click", () => { store.set("movers", b.dataset.mv); $$("[data-mv]").forEach((x) => x.classList.toggle("on", x === b)); $("#mvList").innerHTML = mv(b.dataset.mv).slice(0, 6).map((r) => rowItem(r, b.dataset.mv === "vol" ? "rv" : "chg")).join(""); }));
 };
@@ -316,7 +317,8 @@ routes.s = async (ticker) => {
   const verdict = card(`<div class="verdict t-${s.tone}"><span class="tag">${esc(s.verdict)}</span><p class="vh">${esc(s.headline)}</p><ul>${s.pts.map((x) => `<li>${esc(x)}</li>`).join("")}${s.model.map((x) => `<li><b>${esc(x)}</b></li>`).join("")}</ul>
       ${s.plan ? `<div class="plan"><b>${esc(s.plan.title)}</b><ul>${(s.plan.lines || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
       ${s.risks.length ? `<div class="warn-box"><b>Προσοχή</b><ul>${s.risks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</div>`);
-  const aiNote = Data.aiFor(ticker) ? card(`<div class="ai-head">${icon("spark")}<b>Τι λέει το AI</b><span class="muted small">${Data.ai?.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.aiFor(ticker))}</p>`) : "";
+  const aiNow = typeof briefStockCard === "function" ? briefStockCard(ticker) : "";
+  const aiNote = aiNow + (Data.aiFor(ticker) ? card(`<div class="ai-head">${icon("spark")}<b>Τι λέει το AI</b><span class="muted small">${Data.ai?.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.aiFor(ticker))}</p>`) : "");
   const plan = best ? card(`<h3>Σχέδιο: ${esc(HZ[best.horizon] || best.horizon)}</h3><div class="small muted" style="margin:-4px 0 10px">${esc(best.setup)}</div>${vladder(best, price)}`) : "";
   const dayC = dtr ? card(`<h3>Day trade για αύριο</h3><div class="small muted" style="margin:-4px 0 10px">${esc((dtr.reasons || []).slice(0, 2).join(". "))}</div>${vladder(dtr, price)}<div class="small muted" style="margin-top:8px">Υποψήφια με κανόνες, όχι επικυρωμένη πρόβλεψη. Έξοδος πάντα μέσα στην ίδια μέρα.</div>`) : "";
   const score = card(`<h3>Βαθμολογία</h3><div style="display:flex;gap:14px;align-items:center;margin-bottom:8px">${ring(a.sc.score, "lg")}<div class="small soft">0 = πολύ αρνητικό, 100 = πολύ θετικό. Δεν είναι πιθανότητα. Κάλυψη δεδομένων ${Math.round((a.sc.coverage || 0) * 100)}%.</div></div>
@@ -460,6 +462,7 @@ const menu = (href, ic, t, sub) => `<a class="menu-row" href="${href}"><span cla
 routes.more = async () => {
   $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Περισσότερα</h1>
     ${card(menu("#/pf", "wallet", "Χαρτοφυλάκιο", "Οι μετοχές σου, αποδόσεις, βαθμολογία, από φωτογραφία") + menu("#/goal", "target", "Ο στόχος μου", "π.χ. 1000 € → 2000 €: πόσο ρεαλιστικό και πώς"), "flush")}
+    ${card(menu("#/brief", "spark", "Ενημερώσεις AI", "Πρωί, πριν το άνοιγμα, κλείσιμο: αγορές, ειδήσεις, οι μετοχές σου"), "flush")}
     ${card(menu("#/my", "star", "Οι προβλέψεις μου", myList().length ? `${myList().length} εταιρείες` : "Διάλεξε εταιρείες για καθημερινές προβλέψεις"), "flush")}
     ${card(menu("#/model", "model", "Μοντέλο πρόβλεψης", "Πώς ελέγχθηκε και αν επικυρώθηκε") + menu("#/news", "news", "Ειδήσεις", "Αγορά και μετοχές") + menu("#/data", "data", "Δεδομένα", "Πότε ενημερώθηκε, πηγές")
       + menu("#/settings", "theme", "Εμφάνιση", "Φωτεινό ή σκούρο θέμα") + menu("#/guide", "info", "Οδηγός", "Εγκατάσταση στο iPhone, τι να περιμένεις"), "flush")}
@@ -654,6 +657,27 @@ async function refreshQuotes() {
   Object.assign(App.quotes, await quotes(list));
 }
 
+// ================================================================== αυτόματη ενημέρωση εφαρμογής
+// Όταν ανεβαίνει νέα έκδοση, το κινητό την παίρνει μόνο του: έλεγχος κάθε φορά που ανοίγει/επιστρέφει η εφαρμογή
+// και ανανέωση της σελίδας (εκτός αν ο χρήστης γράφει κάτι εκείνη τη στιγμή — τότε ρωτάμε με ένα κουμπί).
+function setupUpdates() {
+  const sw = navigator.serviceWorker, hadCtl = !!sw.controller;
+  let reloading = false;
+  const reload = () => { if (reloading) return; reloading = true; location.reload(); };
+  sw.addEventListener("controllerchange", () => {
+    if (!hadCtl || reloading) return; // πρώτη εγκατάσταση: τίποτα
+    const busy = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (!busy && !$(".sheet")) return reload(); // ο βοηθός ή η αναζήτηση είναι ανοιχτά: ρωτάμε
+    if ($("#updBar")) return;
+    document.body.insertAdjacentHTML("beforeend", `<button id="updBar" class="upd-bar">Νέα έκδοση της εφαρμογής · πάτα για ανανέωση</button>`);
+    $("#updBar").addEventListener("click", reload);
+  });
+  sw.register("sw.js", { updateViaCache: "none" }).then((reg) => {
+    const check = () => reg.update().catch(() => { /* εκτός σύνδεσης */ });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    setInterval(check, 30 * 60 * 1000);
+  }).catch(() => { /* */ });
+}
 // ================================================================== εκκίνηση (καλείται από το bot.js)
 function toggleTheme() { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; store.set("theme", t);
   $('meta[name="theme-color"]').setAttribute("content", t === "dark" ? "#0b0c10" : "#f3f4f7"); router({ soft: true }); }
@@ -668,7 +692,7 @@ async function boot() {
   $("#botFab").addEventListener("click", () => { const m = location.hash.match(/#\/s\/([^/]+)/); openBot(m ? decodeURIComponent(m[1]).toUpperCase() : bot.ticker); });
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-ask]"); if (!b) return; e.preventDefault(); if (b.dataset.ask === "__watch") { openBot(null); botAsk("Τι κάνει η λίστα μου;"); return; } openBot(b.dataset.ask); botAsk(`Εξήγησέ μου την ${b.dataset.ask}`); });
   renderSession(); setInterval(renderSession, 20000);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* */ });
+  if ("serviceWorker" in navigator) setupUpdates();
   if (location.hash === "#/welcome") location.hash = "#/home";
   const cached = await Data.loadCached();
   if (cached) router();
@@ -683,7 +707,8 @@ async function boot() {
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;
     renderSession();
-    if (Date.now() - Data.loadedAt > 15 * 60000) { const old = Data.snap?.builtAt; await Promise.all([Data.load(), Data.loadAI()]); if (Data.snap?.builtAt !== old && App.route !== "s") { Data.shards.clear(); router({ soft: true }); toast("Νέα ανάλυση φορτώθηκε"); } }
+    if (Date.now() - Data.loadedAt > 15 * 60000) { const old = Data.snap?.builtAt, oldB = Data.ai?.brief?.at; await Promise.all([Data.load(), Data.loadAI()]);
+      if (Data.ai?.brief?.at && Data.ai.brief.at !== oldB) { toast(`Νέα ${esc(Data.ai.brief.label || "ενημέρωση AI")}: ${esc(Data.ai.brief.headline || "")}`); if (App.route === "home" || App.route === "brief") router({ soft: true }); } if (Data.snap?.builtAt !== old && App.route !== "s") { Data.shards.clear(); router({ soft: true }); toast("Νέα ανάλυση φορτώθηκε"); } }
     refreshQuotes().then(() => { if (["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); });
   });
 }
