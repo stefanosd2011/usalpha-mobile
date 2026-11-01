@@ -90,11 +90,32 @@ const Data = {
       const r = await fetch("data/snapshot.json", { cache: "no-cache" });
       if (r.status === 404) { this.error = "pending"; return this.snap; }
       if (!r.ok) throw new Error("HTTP " + r.status);
-      this.snap = await r.json(); this.error = null; this.loadedAt = Date.now();
+      this.snap = await r.json(); this.error = null; this.loadedAt = Date.now(); this.fromCache = false;
       this.byT = new Map(this.snap.rows.map((x) => [x.t, x]));
+      cacheSet("snap", this.snap);
     } catch (e) { this.error = navigator.onLine === false ? "offline" : e.message; }
     return this.snap;
   },
+  // άμεσο άνοιγμα: η τελευταία ανάλυση από τη μνήμη της συσκευής, και μετά ανανέωση από το δίκτυο
+  async loadCached() {
+    const c = await cacheGet("snap", 5 * 864e5);
+    if (c && !this.snap) { this.snap = c; this.byT = new Map(c.rows.map((x) => [x.t, x])); this.fromCache = true; }
+    const a = await cacheGet("ai", 3 * 864e5);
+    if (a && !this.ai) this.ai = a;
+    return !!c;
+  },
+  // έτοιμες σημειώσεις AI της βραδινής ανάλυσης (αν έχει οριστεί το κρυφό κλειδί στο GitHub)
+  ai: null,
+  async loadAI() {
+    try {
+      const r = await fetch("data/ai.json", { cache: "no-cache" });
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (j && (j.market || Object.keys(j.stocks || {}).length)) { this.ai = j; cacheSet("ai", j); }
+    } catch { /* χωρίς AI η εφαρμογή δουλεύει κανονικά */ }
+    return this.ai;
+  },
+  aiFor(t) { return this.ai?.stocks?.[String(t || "").toUpperCase()] || null; },
   row(t) { return this.byT?.get(t) || null; },
   // τιμές μέσα στη μέρα (κάθε 30′ από το cloud, χωρίς κωδικό)
   quotesAt: 0,

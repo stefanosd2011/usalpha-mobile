@@ -78,15 +78,22 @@ const curCh = (t, c) => App.quotes[t]?.chg ?? c;
 
 // ================================================================== router
 const routes = {};
+const skeleton = () => `<div class="stack" aria-busy="true" aria-label="Φόρτωση"><div class="skel" style="height:150px;border-radius:28px"></div><div class="skel" style="height:22px;width:40%"></div><div class="skel" style="height:120px"></div><div class="skel" style="height:120px"></div></div>`;
 async function router(opt = {}) {
   const h = location.hash.replace(/^#\/?/, "") || "home";
   const [name, ...rest] = h.split("/");
-  const changed = name !== App.route; App.route = name;
+  const first = !App.route, changed = name !== App.route; App.route = name;
   const tab = { home: "home", day: "day", signals: "signals", scan: "scan", s: "scan", watch: "watch", tools: "tools" }[name] || "";
   $$(".tabbar a").forEach((a) => a.classList.toggle("on", a.dataset.r === tab));
   disposeCharts();
   const view = $("#view"), y = window.scrollY;
-  if (!opt.soft) view.innerHTML = `<div class="loading"><span class="spinner"></span>Φόρτωση…</div>`;
+  if (!opt.soft) {
+    const swap = () => { view.innerHTML = skeleton(); };
+    // μία ήπια μετάβαση στην αλλαγή σελίδας (όπου το υποστηρίζει ο browser και δεν έχει ζητηθεί λιγότερη κίνηση)
+    if (changed && !first && document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      try { await document.startViewTransition(swap).updateCallbackDone; } catch { swap(); }
+    } else swap();
+  }
   try { await (routes[name] || routes.home)(...rest.map(decodeURIComponent)); if (opt.soft) window.scrollTo(0, y); else if (changed) window.scrollTo(0, 0); }
   catch (e) { view.innerHTML = `<div class="stack"><div class="callout"><b>Δεν φόρτωσε.</b> ${esc(e.message)}</div><button class="btn" onclick="router()">Δοκίμασε ξανά</button></div>`; }
 }
@@ -105,6 +112,33 @@ function renderSession() {
   $("#session").innerHTML = `<span class="dot ${dot}"></span><b>${title}</b><span>· ${sub}</span>`;
 }
 
+// ================================================================== οι προβλέψεις μου (εταιρείες που διαλέγει ο χρήστης)
+const myList = () => store.get("mypreds", []);
+const setMy = (l) => store.set("mypreds", [...new Set(l.map((x) => String(x).toUpperCase()))].slice(0, 40));
+const inMy = (t) => myList().includes(String(t).toUpperCase());
+function toggleMy(t) { const T = String(t).toUpperCase(); setMy(inMy(T) ? myList().filter((x) => x !== T) : [T, ...myList()]); toast(inMy(T) ? `Η ${T} μπήκε στις προβλέψεις σου` : `Η ${T} βγήκε από τις προβλέψεις σου`); }
+const M4 = (h) => D()?.model4?.models?.[h] || null;
+// ποιο μοντέλο δείχνουμε: το v4 όπου είναι ενεργό ή μετρήθηκε καλύτερο από το παλιό, αλλιώς το v3
+const useV4 = (h) => !!(M4(h)?.active || M4(h)?.better);
+function rankOf(r, h) {
+  const k = h === "rank5" ? "5" : "21", v4 = r?.["q" + k], v3 = r?.["r" + k];
+  if (isNum(v4) && useV4(h)) return { v: v4, ver: "v4", ok: !!M4(h)?.active };
+  return isNum(v3) ? { v: v3, ver: "v3", ok: !!D()?.model?.[h]?.validated } : isNum(v4) ? { v: v4, ver: "v4", ok: !!M4(h)?.active } : null;
+}
+function rankBar(x) {
+  if (!x) return `<span class="muted small">—</span>`;
+  const col = x.v >= 0.6 ? "var(--up)" : x.v <= 0.4 ? "var(--down)" : "var(--warn)";
+  return `<span class="rbar" aria-hidden="true"><i style="width:${clamp(x.v * 100, 3, 100).toFixed(0)}%;background:${col}"></i></span><b class="num small">${topPct(x.v)}</b>`;
+}
+function myCard(t) {
+  const r = Data.row(t) || { t, n: "", p: null, ch: null }, seen = store.get("mySeen", {}), fresh = D()?.asOf && seen[t] !== D().asOf;
+  const a5 = rankOf(r, "rank5"), a21 = rankOf(r, "rank21");
+  return `<a class="mp" href="#/s/${encodeURIComponent(t)}"><div class="mp-top">${logo(t)}<div style="min-width:0"><div class="tk">${esc(t)}</div><div class="nm">${esc(r.n || "")}</div></div>
+    <div class="px"><b class="num">${fmt(curPx(t, r.p))}</b>${chgPill(curCh(t, r.ch))}</div></div>
+    <div class="mp-row"><span>5 ημέρες</span>${rankBar(a5)}</div><div class="mp-row"><span>1 μήνας</span>${rankBar(a21)}</div>
+    ${fresh ? `<div class="chips">${chip("Νέα πρόβλεψη", "accent")}</div>` : ""}</a>`;
+}
+
 // ================================================================== κάρτες
 function rowItem(r, right = "chg") {
   const p = curPx(r.t, r.p), c = curCh(r.t, r.ch);
@@ -119,6 +153,7 @@ function tradeCard(s0, kind = "sig") {
   return `<a class="trade" href="#/s/${encodeURIComponent(s.ticker)}"><div class="t-top">${logo(s.ticker)}<div style="min-width:0"><div class="tk">${esc(s.ticker)} ${s.bias === "bearish" ? chip("Short", "down") : ""}</div><div class="nm">${esc(s.name || "")}</div></div>
     <div class="px"><b class="num">${money(cur)}</b>${chgPill(chg)}</div></div>
     ${why ? `<div class="why">${esc(why)}</div>` : ""}
+    ${kind === "day" && Data.aiFor(s.ticker) ? `<div class="ai-line"><b>AI</b> ${esc(Data.aiFor(s.ticker))}</div>` : ""}
     <div class="levels"><div><small>Είσοδος</small><b class="num">${fmt(s.entryLow)}–${fmt(s.entryHigh)}</b></div><div class="st"><small>Stop</small><b class="num">${fmt(s.stop)}</b></div><div class="tg"><small>Στόχος</small><b class="num">${fmt(s.tp2)}</b></div></div>
     ${ladder(s, cur)}
     <div class="chips">${kind === "day" ? chip("Day trade", "accent") : chip(esc(HZ[s.horizon] || s.horizon), "accent")}${s.confidence ? chip(esc(s.confidence) + " επιβεβαίωση") : ""}${isNum(s.rank) ? chip(topPct(s.rank) + " αγοράς", "sodium") : ""}${status}${isNum(s.rr) ? chip(`R/R ${fmt(s.rr, 1)}`) : ""}</div></a>`;
@@ -153,6 +188,10 @@ routes.home = async () => {
     <div class="meter"><i style="width:${clamp(m.score ?? 0)}%"></i></div></section>`;
   const actions = `<div class="actions"><button class="act" data-go="#/day"><span class="c pri">${icon("bolt")}</span>Day trade</button><button class="act" data-go="#/signals"><span class="c">${icon("target")}</span>Ευκαιρίες</button>
     <button class="act" data-go="#/scan"><span class="c">${icon("filter")}</span>Scanner</button><button class="act" data-bot="1"><span class="c">${icon("chat")}</span>Βοηθός</button></div>`;
+  const my = myList();
+  const mine = my.length ? `${sec("Οι προβλέψεις μου", `<a class="more" href="#/my">Ρυθμίσεις</a>`)}<div class="hscroll">${my.slice(0, 12).map(myCard).join("")}</div>`
+    : card(`<div class="cta-row"><span class="c">${icon("star")}</span><div><b>Οι προβλέψεις μου</b><div class="nm">Διάλεξε εταιρείες και δες εδώ κάθε μέρα τι προβλέπουν τα μοντέλα.</div></div><a class="btn sm" href="#/my">Διάλεξε</a></div>`);
+  const ai = Data.ai?.market ? card(`<div class="ai-head">${icon("spark")}<b>Σύνοψη AI</b><span class="muted small">${Data.ai.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.ai.market)}</p><div class="small muted">Γράφτηκε από AI μόνο με τα δεδομένα του συστήματος. Μπορεί να κάνει λάθος.</div>`) : "";
   const dl = d.day?.long || [];
   const day = `${sec("Day trade για αύριο", `<a class="more" href="#/day">Όλα</a>`)}${dl.length ? `<div class="hscroll">${dl.slice(0, 6).map((x) => tradeCard(x, "day")).join("")}</div>` : card(dayEmpty(d, "Καμία υποψήφια σήμερα", "Δεν βρέθηκε μετοχή που να περνά όλα τα κριτήρια για day trade."))}`;
   const sig = d.signals || [];
@@ -168,7 +207,7 @@ routes.home = async () => {
   const mx = Math.max(1, ...secs.map((s) => Math.abs(s.rel21)));
   const sectors = secs.length ? `${sec("Κλάδοι", "", "vs S&P 500, 1 μήνας")}${card(secs.map((s) => `<a class="sector-row" href="#/s/${encodeURIComponent(s.etf || "")}"><span>${esc(s.sector)}</span><span class="bar"><i style="${s.rel21 >= 0 ? "left:50%" : "right:50%"};width:${(Math.abs(s.rel21) / mx * 50).toFixed(1)}%;background:${s.rel21 >= 0 ? "var(--up)" : "var(--down)"}"></i></span><b class="num ${cls(s.rel21)}" style="text-align:right">${pct(s.rel21, 1)}</b></a>`).join(""), "flush")}` : "";
   const news = (d.news || []).length ? `${sec("Ειδήσεις", `<a class="more" href="#/news">Όλες</a>`)}${card(d.news.slice(0, 5).map(newsItem).join(""), "flush")}` : "";
-  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
+  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${mine}${ai}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
     <div class="small muted" style="text-align:center">Ανάλυση ${fmt(d.analyzed, 0)} μετοχών, κλείσιμο ${dday(d.asOf)}, ενημέρωση ${dt(d.builtAt)}. Ανάλυση, όχι επενδυτική συμβουλή.</div></div>`;
   $$("[data-mv]").forEach((b) => b.addEventListener("click", () => { store.set("movers", b.dataset.mv); $$("[data-mv]").forEach((x) => x.classList.toggle("on", x === b)); $("#mvList").innerHTML = mv(b.dataset.mv).slice(0, 6).map((r) => rowItem(r, b.dataset.mv === "vol" ? "rv" : "chg")).join(""); }));
 };
@@ -264,7 +303,8 @@ routes.s = async (ticker) => {
   a.q = q; App.last = a;
   const price = q?.price ?? a.price, chg = q?.chg ?? a.chg, inW = App.watch.includes(ticker);
   const head = `<section class="card"><div class="stock-top">${logo(ticker, true)}<div style="min-width:0"><h1>${esc(ticker)}</h1><div class="nm">${esc(a.name || (a.index ? "Δείκτης / ETF" : ""))}${a.sector ? ` · ${esc(a.sector)}` : ""}</div></div></div>
-    <div class="price-big num">${money(price)}</div><div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">${chgPill(chg)}${qChip(q, a.asOf)}${a.sc ? biasChip(a.sc.bias) : ""}</div>
+    <div class="price-big num">${money(price)}</div><div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">${chgPill(chg)}${qChip(q, a.asOf)}${a.sc ? biasChip(a.sc.bias) : ""}
+      ${a.index ? "" : `<button class="chip-btn ${inMy(ticker) ? "on" : ""}" id="myBtn" aria-pressed="${inMy(ticker)}">${icon("star")}${inMy(ticker) ? "Στις προβλέψεις μου" : "Πρόσθεσε στις προβλέψεις μου"}</button>`}</div>
     ${a.index ? "" : `<div class="actions" style="margin-top:16px"><button class="act" data-ask="${esc(ticker)}"><span class="c pri">${icon("chat")}</span>Εξήγησέ μου</button><button class="act" id="wBtn"><span class="c">${icon("star")}</span>${inW ? "Στη λίστα" : "Λίστα"}</button>
       <button class="act" data-q="Ποια τα ρίσκα της ${esc(ticker)};"><span class="c">${icon("shield")}</span>Ρίσκα</button><button class="act" data-q="Πού να βάλω stop στην ${esc(ticker)};"><span class="c">${icon("target")}</span>Stop</button></div>`}</section>`;
   const chartC = card(`<div class="seg" id="tb" style="margin-bottom:10px"></div><div class="chart-box"><div class="chart-legend" id="lg"></div><div class="chart-main" id="cMain"></div><div class="chart-sub" id="cRsi"></div></div><div class="small muted" style="margin-top:6px">Ημερήσιες τιμές έως ${dday(a.asOf)}</div>`);
@@ -273,17 +313,19 @@ routes.s = async (ticker) => {
   const verdict = card(`<div class="verdict t-${s.tone}"><span class="tag">${esc(s.verdict)}</span><p class="vh">${esc(s.headline)}</p><ul>${s.pts.map((x) => `<li>${esc(x)}</li>`).join("")}${s.model.map((x) => `<li><b>${esc(x)}</b></li>`).join("")}</ul>
       ${s.plan ? `<div class="plan"><b>${esc(s.plan.title)}</b><ul>${(s.plan.lines || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
       ${s.risks.length ? `<div class="warn-box"><b>Προσοχή</b><ul>${s.risks.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</div>`);
+  const aiNote = Data.aiFor(ticker) ? card(`<div class="ai-head">${icon("spark")}<b>Τι λέει το AI</b><span class="muted small">${Data.ai?.at ? dt(Data.ai.at) : ""}</span></div><p class="ai-text">${esc(Data.aiFor(ticker))}</p>`) : "";
   const plan = best ? card(`<h3>Σχέδιο: ${esc(HZ[best.horizon] || best.horizon)}</h3><div class="small muted" style="margin:-4px 0 10px">${esc(best.setup)}</div>${vladder(best, price)}`) : "";
   const dayC = dtr ? card(`<h3>Day trade για αύριο</h3><div class="small muted" style="margin:-4px 0 10px">${esc((dtr.reasons || []).slice(0, 2).join(". "))}</div>${vladder(dtr, price)}<div class="small muted" style="margin-top:8px">Υποψήφια με κανόνες, όχι επικυρωμένη πρόβλεψη. Έξοδος πάντα μέσα στην ίδια μέρα.</div>`) : "";
   const score = card(`<h3>Βαθμολογία</h3><div style="display:flex;gap:14px;align-items:center;margin-bottom:8px">${ring(a.sc.score, "lg")}<div class="small soft">0 = πολύ αρνητικό, 100 = πολύ θετικό. Δεν είναι πιθανότητα. Κάλυψη δεδομένων ${Math.round((a.sc.coverage || 0) * 100)}%.</div></div>
       ${a.sc.contrib.map((c) => `<div class="meter"><span>${esc(c.label)}</span><div class="bar"><i style="width:${clamp(c.score ?? 0)}%;background:${c.score >= 60 ? "var(--up)" : c.score <= 40 ? "var(--down)" : "var(--warn)"}"></i></div><b class="num">${isNum(c.score) ? c.score.toFixed(0) : "—"}</b></div>`).join("")}
       ${(a.sc.explain?.what_changes || []).length ? `<div class="small muted" style="margin-top:12px">Τι θα άλλαζε την εικόνα</div><ul class="list" style="margin-top:6px">${a.sc.explain.what_changes.map((x) => `<li><span>${esc(x)}</span></li>`).join("")}</ul>` : ""}`);
-  view.innerHTML = `<div class="stack">${head}${chartC}<div class="wide2"><div class="stack">${verdict}${dayC}${plan}</div><div class="stack">${score}</div></div>
+  view.innerHTML = `<div class="stack">${head}${chartC}<div class="wide2"><div class="stack">${verdict}${aiNote}${dayC}${plan}</div><div class="stack">${score}</div></div>
     ${seg(STABS, tab, "st")}<div id="stab" class="stack"></div></div>`;
   drawChart(a);
   const show = (k) => { store.set("stab2", k); $$("[data-st]").forEach((b) => b.classList.toggle("on", b.dataset.st === k)); $("#stab").innerHTML = STOCK_TABS[k](a, price); if (k === "news") loadLiveNews(a); };
   $$("[data-st]").forEach((b) => b.addEventListener("click", () => show(b.dataset.st)));
   $("#wBtn").addEventListener("click", () => { if (inW) App.watch = App.watch.filter((x) => x !== ticker); else App.watch.unshift(ticker); saveWatch(); router({ soft: true }); });
+  $("#myBtn")?.addEventListener("click", () => { toggleMy(ticker); router({ soft: true }); });
   show(tab);
 };
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-q]"); if (!b) return; e.preventDefault(); openBot(); botAsk(b.dataset.q); });
@@ -308,15 +350,27 @@ function predLine(p) {
   if (p.kind === "rank") return `${topPct(p.rank)} της αγοράς για τις επόμενες ${p.days} ημέρες${isNum(p.exp) ? `, ιστορικά ${pct(p.exp * 100, 2)} σε σχέση με την αγορά` : ""}`;
   return `${isNum(p.p) ? Math.round(p.p * 100) + "%" : "—"} πιθανότητα να πιάσει τον στόχο πριν το stop${isNum(p.breakeven) ? ` (χρειάζεται πάνω από ${Math.round(p.breakeven * 100)}% για κέρδος)` : ""}`;
 }
+const HZ_ORDER = ["rank5", "rank21", "day", "short", "swing"];
+// για κάθε ορίζοντα: ποια πρόβλεψη δείχνουμε (v4 όπου είναι ενεργό ή καλύτερο, αλλιώς v3) και η άλλη για σύγκριση
+function predPick(a, h) {
+  const p3 = a.pred?.[h], p4 = a.pred4?.[h];
+  if (p4 && (p4.active || useV4(h))) return { p: { ...p4, validated: !!p4.active }, ver: "v4", other: p3 ? { ...p3, ver: "v3" } : null };
+  if (p3) return { p: p3, ver: "v3", other: p4 ? { ...p4, validated: !!p4.active, ver: "v4" } : null };
+  return p4 ? { p: { ...p4, validated: !!p4.active }, ver: "v4", other: null } : null;
+}
+const predVal = (p) => (p.kind === "rank" ? topPct(p.rank) : isNum(p.p) ? Math.round(p.p * 100) + "%" : "—");
 const STOCK_TABS = {
   model(a) {
-    const ps = Object.values(a.pred || {}).sort((x, y) => (y.validated - x.validated) || (x.kind === "rank" ? -1 : 1));
-    if (!ps.length) return card(emptyBox("Δεν υπάρχει πρόβλεψη για αυτή τη μετοχή"));
-    return ps.map((p) => card(`<h3>${esc(p.label || "")}</h3><div class="num" style="font-size:28px;font-weight:780">${p.kind === "rank" ? topPct(p.rank) : isNum(p.p) ? Math.round(p.p * 100) + "%" : "—"}</div>
-      <div class="small soft" style="margin-top:4px">${esc(predLine(p))}</div><div style="margin:10px 0">${p.validated ? chip("Επικυρωμένο σε άγνωστα δεδομένα", "up") : chip("Μη επικυρωμένο: δεν λαμβάνεται υπόψη", "warn")}</div>
+    const picks = HZ_ORDER.map((h) => predPick(a, h)).filter(Boolean).sort((x, y) => (y.p.validated - x.p.validated));
+    if (!picks.length) return card(emptyBox("Δεν υπάρχει πρόβλεψη για αυτή τη μετοχή"));
+    return picks.map(({ p, ver, other }) => card(`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0;flex:1">${esc(p.label || "")}</h3>${ver === "v4" ? chip("Νέο μοντέλο v4", "accent") : chip("Μοντέλο v3")}</div>
+      <div class="num" style="font-size:28px;font-weight:780;margin-top:8px">${predVal(p)}</div>
+      <div class="small soft" style="margin-top:4px">${esc(predLine(p))}</div>
+      ${other ? `<div class="small muted" style="margin-top:6px">${other.ver === "v4" ? "Νέο μοντέλο v4" : "Παλιό μοντέλο v3"}: ${predVal(other)}</div>` : ""}
+      <div style="margin:10px 0">${p.validated ? chip("Επικυρωμένο σε άγνωστα δεδομένα", "up") : chip("Μη επικυρωμένο: δεν λαμβάνεται υπόψη", "warn")}</div>
       ${p.kind !== "rank" && isNum(p.exp) ? `<div class="soft small">Σε παρόμοιες περιπτώσεις: <b class="${cls(p.exp)}">${p.exp >= 0 ? "+" : ""}${fmt(p.exp, 2)}R</b> (για κάθε 100$ ρίσκου, ${p.exp >= 0 ? "κέρδος" : "απώλεια"} ${fmt(Math.abs(p.exp) * 100, 0)}$ κατά μέσο όρο).</div>` : ""}
       ${p.drivers?.length ? `<div class="small muted" style="margin:12px 0 6px">Τι σπρώχνει την πρόβλεψη πάνω (πράσινο) ή κάτω (κόκκινο)</div>${p.drivers.map((x) => `<div class="driver"><span>${esc(x.label)}</span><div class="dbar"><i style="${x.effect >= 0 ? "left:50%" : "right:50%"};width:${Math.min(50, Math.abs(x.effect) * 120).toFixed(1)}%;background:${x.effect >= 0 ? "var(--up)" : "var(--down)"}"></i></div><span class="num muted" style="text-align:right">${fmt(x.value, 2)}</span></div>`).join("")}` : ""}`)).join("")
-      + `<div class="note">Το μοντέλο (LightGBM, 173 στοιχεία ανά μετοχή, 10 χρόνια ιστορικό) χρησιμοποιείται μόνο αν πέρασε τον έλεγχο σε δεδομένα που δεν είχε δει. <a href="#/model">Πώς ελέγχθηκε</a></div>`;
+      + `<div class="note">Τα μοντέλα (LightGBM, ${D()?.model4?.features || 173} στοιχεία ανά μετοχή, 10 χρόνια ιστορικό) χρησιμοποιούνται μόνο αν πέρασαν τον έλεγχο σε δεδομένα που δεν είχαν δει. <a href="#/model">Πώς ελέγχθηκαν</a></div>`;
   },
   setups(a) {
     const all = [...a.acc.map((s) => setupCard(a, s, false)), ...a.rej.map((s) => setupCard(a, s, true))];
@@ -402,11 +456,47 @@ function drawChart(a) {
 const menu = (href, ic, t, sub) => `<a class="menu-row" href="${href}"><span class="c">${icon(ic)}</span><div><div style="font-weight:650">${t}</div><div class="nm">${sub}</div></div>${icon("chev")}</a>`;
 routes.more = async () => {
   $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Περισσότερα</h1>
+    ${card(menu("#/my", "star", "Οι προβλέψεις μου", myList().length ? `${myList().length} εταιρείες` : "Διάλεξε εταιρείες για καθημερινές προβλέψεις"), "flush")}
     ${card(menu("#/model", "model", "Μοντέλο πρόβλεψης", "Πώς ελέγχθηκε και αν επικυρώθηκε") + menu("#/news", "news", "Ειδήσεις", "Αγορά και μετοχές") + menu("#/data", "data", "Δεδομένα", "Πότε ενημερώθηκε, πηγές")
       + menu("#/settings", "theme", "Εμφάνιση", "Φωτεινό ή σκούρο θέμα") + menu("#/guide", "info", "Οδηγός", "Εγκατάσταση στο iPhone, τι να περιμένεις"), "flush")}
     ${Data.server ? card(menu("#/tools", "model", "Εργαλεία υπολογιστή", "Εκπαίδευση μοντέλων, νέα ανάλυση τώρα") + menu("classic", "pc", "Πλήρες πρόγραμμα", "Backtest, paper trading, αναφορές, ρυθμίσεις: όλα όπως ήταν"), "flush") : ""}
     ${card(menu("#/ai", "spark", "Σύνδεση AI", AI.enabled() || Data.serverAI ? "Συνδεδεμένο" : "Προαιρετικό"), "flush")}
     <div class="note">US Alpha: ανάλυση και προτάσεις, όχι επενδυτική συμβουλή. Καμία αυτόματη εντολή.</div></div>`;
+};
+// Οι προβλέψεις μου: ο χρήστης διαλέγει εταιρείες και βλέπει εδώ ό,τι προβλέπουν τα μοντέλα, με σήμα «νέο» κάθε μέρα
+function myVerdict(a5, a21) {
+  if (!a5 && !a21) return "Δεν υπάρχει ακόμα πρόβλεψη κατάταξης.";
+  const v = [a5?.v, a21?.v].filter(isNum), avg = v.reduce((s, x) => s + x, 0) / v.length;
+  return avg >= 0.7 ? "Τα μοντέλα τη βλέπουν πάνω από τις περισσότερες μετοχές της αγοράς." : avg <= 0.3 ? "Τα μοντέλα τη βλέπουν κάτω από τις περισσότερες μετοχές της αγοράς." : "Χωρίς καθαρή εικόνα: κοντά στη μέση της αγοράς.";
+}
+routes.my = async () => {
+  const d = D(), list = myList();
+  const seen = store.get("mySeen", {}); if (d?.asOf) { list.forEach((t) => { seen[t] = d.asOf; }); store.set("mySeen", seen); }
+  const anyOk = Object.values(d?.model || {}).some((m) => m.validated) || Object.values(d?.model4?.models || {}).some((m) => m.active);
+  const addW = App.watch.filter((t) => !list.includes(t));
+  $("#view").innerHTML = `<div class="stack"><div><h1 class="page-title">Οι προβλέψεις μου</h1><p class="page-sub">Διάλεξε εταιρείες. Κάθε βράδυ, μετά την ανάλυση, εδώ βλέπεις τι προβλέπουν τα μοντέλα για αυτές.</p></div>
+    <div class="grid2"><button class="btn primary" id="myAdd">${icon("plus")}Πρόσθεσε εταιρεία</button>${addW.length ? `<button class="btn" id="myW">${icon("star")}Πρόσθεσε τη λίστα μου (${addW.length})</button>` : ""}</div>
+    ${!anyOk ? `<div class="callout info">Κανένα μοντέλο δεν έχει ακόμα επικυρωθεί σε δεδομένα που δεν είχε δει. Δες τις προβλέψεις ως ένδειξη, όχι ως απόφαση.</div>` : ""}
+    <div id="myCards" class="stack">${list.length ? list.map((t) => `<div class="skel" style="height:220px" data-myph="${esc(t)}"></div>`).join("") : card(emptyBox("Δεν έχεις διαλέξει εταιρείες", "Πάτα «Πρόσθεσε εταιρεία» ή το κουμπί στη σελίδα κάθε μετοχής."))}</div></div>`;
+  $("#myAdd").addEventListener("click", () => openSearch((t) => { setMy([t, ...myList()]); toast(`Η ${t} μπήκε στις προβλέψεις σου`); router({ soft: true }); }));
+  $("#myW")?.addEventListener("click", () => { setMy([...myList(), ...addW]); router({ soft: true }); });
+  const shards = await Promise.all(list.map((t) => Data.stock(t).catch(() => null)));
+  if (App.route !== "my") return;
+  list.forEach((t, i) => {
+    const a = shards[i], r = Data.row(t) || { t, n: a?.name || "" }, ph = $(`[data-myph="${CSS.escape(t)}"]`);
+    if (!ph) return;
+    const a5 = rankOf(r, "rank5"), a21 = rankOf(r, "rank21");
+    const SHORT = { day: "Day trade αύριο", short: "Στόχος σε 5 ημέρες", swing: "Στόχος σε 25 ημέρες" };
+    const lines = a ? ["day", "short", "swing"].map((h) => [h, predPick(a, h)]).filter(([, x]) => x).map(([h, { p, ver }]) => `<li><span><b>${SHORT[h]}:</b> ${esc(predVal(p))} πιθανότητα να πιάσει τον στόχο πριν το stop${isNum(p.breakeven) ? ` (χρειάζεται >${Math.round(p.breakeven * 100)}%)` : ""} ${ver === "v4" ? chip("v4", "accent") : ""}${p.validated ? chip("επικυρωμένο", "up") : ""}</span></li>`).join("") : "";
+    ph.outerHTML = card(`<div class="mp-top" style="margin-bottom:10px">${logo(t)}<div style="min-width:0"><div class="tk">${esc(t)}</div><div class="nm">${esc(r.n || a?.name || "")}</div></div>
+      <div class="px"><b class="num">${fmt(curPx(t, r.p ?? a?.price))}</b>${chgPill(curCh(t, r.ch ?? a?.chg))}</div></div>
+      <div class="mp-row"><span>5 ημέρες</span>${rankBar(a5)}</div><div class="mp-row"><span>1 μήνας</span>${rankBar(a21)}</div>
+      <p class="soft" style="margin:10px 0 0">${esc(myVerdict(a5, a21))}</p>
+      ${lines ? `<ul class="list" style="margin-top:8px">${lines}</ul>` : `<div class="small muted" style="margin-top:8px">${a ? "" : "Η εταιρεία δεν είναι στη σημερινή ανάλυση (πολύ μικρός τζίρος ή χωρίς τιμές)."}</div>`}
+      ${Data.aiFor(t) ? `<div class="ai-line" style="margin-top:10px"><b>AI</b> ${esc(Data.aiFor(t))}</div>` : ""}
+      <div class="grid2" style="margin-top:12px"><a class="btn" href="#/s/${encodeURIComponent(t)}">Ανάλυση</a><button class="btn" data-myrm="${esc(t)}">${icon("trash")}Αφαίρεση</button></div>`);
+  });
+  $$("[data-myrm]").forEach((b) => b.addEventListener("click", () => { setMy(myList().filter((x) => x !== b.dataset.myrm)); router({ soft: true }); }));
 };
 // Εργαλεία του προγράμματος υπολογιστή (εκπαίδευση, ανάλυση). Τίποτα δεν αφαιρέθηκε: όλα υπάρχουν και στο «Πλήρες πρόγραμμα».
 let _toolsTimer = 0;
@@ -415,15 +505,16 @@ routes.tools = async () => {
   clearTimeout(_toolsTimer);
   const s = await fetch("api/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (App.route !== "tools") return;
-  const ml = s?.ml_progress || {}, sc = s?.scan_progress || {}, ls = s?.last_scan || {}, M = D()?.model || {};
+  const ml = s?.ml_progress || {}, ml4 = s?.ml4_progress || {}, sc = s?.scan_progress || {}, ls = s?.last_scan || {}, M = D()?.model || {};
   const trained = Object.values(M).map((m) => m.createdAt).filter(Boolean).sort().pop();
   const nVal = Object.values(M).filter((m) => m.validated).length, nAll = Object.keys(M).length;
   const bar = (p) => `<div class="pbar" role="progressbar" aria-valuenow="${Math.round(p || 0)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(3, Math.min(100, p || 0))}%"></i></div>`;
   const scPct = sc.total ? (sc.done / sc.total) * 100 : 0;
   $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Εργαλεία υπολογιστή</h1><p class="page-sub">Ό,τι έκανε το πρόγραμμα συνεχίζει να γίνεται και αυτόματα, όπως πριν. Εδώ τα ξεκινάς και με ένα πάτημα.</p>
     ${card(`<h3>Εκπαίδευση μοντέλων πρόβλεψης</h3>${kv([["Τελευταία εκπαίδευση", trained ? dt(trained) : "—"], ["Μοντέλα", nAll ? `${nAll} (${nVal} επικυρωμένα)` : "—"], ["Τελευταία πρόβλεψη", s?.ml_predicted_at ? dday(s.ml_predicted_at) : "—"]])}
-      ${ml.running ? `<div style="margin-top:12px"><b>Τρέχει τώρα:</b> ${esc(ml.step || "")}${bar(ml.pct)}<div class="small muted">Μπορείς να κλείσεις τη σελίδα, η εκπαίδευση συνεχίζει στο πρόγραμμα.</div></div>`
-        : `${ml.error ? `<p class="down small">Τελευταίο σφάλμα: ${esc(ml.error)}</p>` : ""}<button class="btn primary block" id="tTrain" style="margin-top:12px">${icon("model")}Εκπαίδευση τώρα</button><div class="small muted" style="margin-top:8px">Κατεβάζει ιστορικό, εκπαιδεύει και ελέγχει όλα τα μοντέλα. Παίρνει αρκετή ώρα.</div>`}`)}
+      ${ml.running || ml4.running ? `<div style="margin-top:12px"><b>Τρέχει τώρα:</b> ${esc(ml.running ? ml.step || "" : "Νέο μοντέλο v4: " + (ml4.step || ""))}${bar(ml.running ? ml.pct : ml4.pct)}<div class="small muted">Μπορείς να κλείσεις τη σελίδα, η εκπαίδευση συνεχίζει στο πρόγραμμα.</div></div>`
+        : `${ml.error ? `<p class="down small">Τελευταίο σφάλμα: ${esc(ml.error)}</p>` : ""}${ml4.error ? `<p class="down small">Τελευταίο σφάλμα v4: ${esc(ml4.error)}</p>` : ""}<button class="btn primary block" id="tTrain" style="margin-top:12px">${icon("model")}Εκπαίδευση τώρα (v3 και νέο v4)</button>
+          <button class="btn block" id="tTrain4" style="margin-top:8px">${icon("spark")}Μόνο το νέο μοντέλο v4</button><div class="small muted" style="margin-top:8px">Κατεβάζει ιστορικό, εκπαιδεύει και ελέγχει τα μοντέλα. Το v4 μετριέται δίπλα στο v3 και χρησιμοποιείται μόνο αν βγει καλύτερο. Παίρνει αρκετή ώρα.</div>`}`)}
     ${card(`<h3>Πλήρης ανάλυση αγοράς</h3>${kv([["Τελευταία ανάλυση", ls.finished_at ? dt(ls.finished_at) : "—"], ["Μετοχές", ls.n_ok ? fmt(ls.n_ok, 0) : "—"]])}
       ${sc.running ? `<div style="margin-top:12px"><b>Τρέχει τώρα:</b> ${esc(sc.step || "")}${sc.total ? ` (${fmt(sc.done, 0)}/${fmt(sc.total, 0)})` : ""}${bar(scPct)}</div>`
         : `<button class="btn block" id="tScan" style="margin-top:12px">${icon("refresh")}Νέα ανάλυση τώρα</button><div class="small muted" style="margin-top:8px">Γίνεται και αυτόματα κάθε μέρα μετά το κλείσιμο. Βγάζει ευκαιρίες, day trade και προβλέψεις.</div>`}`)}
@@ -432,8 +523,8 @@ routes.tools = async () => {
     if (!b.dataset.sure) { b.dataset.sure = "1"; b.lastChild.textContent = "Πάτα ξανά για να ξεκινήσει"; return; }
     b.disabled = true; const j = await fetch(url, { method: "POST" }).then((r) => r.json()).catch(() => null);
     toast(j?.status === "started" ? msg : j?.status === "already_running" ? "Τρέχει ήδη" : "Δεν ξεκίνησε, δοκίμασε ξανά", j ? "info" : "high"); setTimeout(() => router({ soft: true }), 800); });
-  go("#tTrain", "api/ml/train", "Η εκπαίδευση ξεκίνησε"); go("#tScan", "api/scan", "Η ανάλυση ξεκίνησε");
-  if (ml.running || sc.running) _toolsTimer = setTimeout(() => { if (App.route === "tools") router({ soft: true }); }, 4000);
+  go("#tTrain", "api/ml/train", "Η εκπαίδευση ξεκίνησε"); go("#tTrain4", "api/ml4/train", "Η εκπαίδευση του v4 ξεκίνησε"); go("#tScan", "api/scan", "Η ανάλυση ξεκίνησε");
+  if (ml.running || ml4.running || sc.running) _toolsTimer = setTimeout(() => { if (App.route === "tools") router({ soft: true }); }, 4000);
 };
 routes.ai = async () => {
   if (Data.server) {
@@ -460,15 +551,34 @@ function decileBars(dec) {
       return `<rect x="${(i * bw + 5).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 10).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="4" fill="${v >= 0 ? "var(--up)" : "var(--down)"}" opacity="${x.decile === 10 ? 1 : 0.6}"/><text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 22}" fill="var(--muted)" font-size="11" text-anchor="middle">${x.decile}</text>`; }).join("")}
     <text x="0" y="${H - 4}" fill="var(--muted)" font-size="11">χειρότερες προβλέψεις</text><text x="${W}" y="${H - 4}" fill="var(--muted)" font-size="11" text-anchor="end">καλύτερες</text></svg>`;
 }
+// Νέο μοντέλο v4: μετρήθηκε στις ΙΔΙΕΣ περιόδους με το v3, ώστε το «πριν / μετά» να είναι πραγματικό
+function model4Section(d) {
+  const m4 = d?.model4 || {}, M = m4.models || {}, keys = ["rank21", "rank5", "short", "day", "swing"].filter((k) => M[k]);
+  const pr = m4.progress || {};
+  if (!keys.length) return card(`<h3>Νέο μοντέλο v4</h3><p class="soft" style="margin:0">Πιο δυνατή έκδοση με περισσότερα στοιχεία ανά μετοχή (καθαρό momentum χωρίς την αγορά, ιδιοσυγκρατικός κίνδυνος, εποχικότητα, νυχτερινές κινήσεις, ρευστότητα, επιτόκια, δολάριο, πετρέλαιο, σύγκριση με κλάδο και βιομηχανία). Εκπαιδεύεται στην επόμενη βραδινή ανάλυση και θα δεις εδώ πώς τα πάει απέναντι στο σημερινό.</p>${pr.running ? `<div class="small muted" style="margin-top:8px">Τώρα: ${esc(pr.step || "")}</div>` : ""}`);
+  const P = (v, n = 2) => (isNum(v) ? pct(v * 100, n) : "—");
+  const row = (k) => { const m = M[k], rank = m.kind === "rank", a = m.v3 || {}, b = m.v4 || {};
+    const st = m.active ? chip("Ενεργό: καλύτερο και επικυρωμένο", "up") : m.better ? chip("Καλύτερο από το v3, όχι ακόμα επικυρωμένο", "accent") : chip("Δεν ξεπέρασε το v3", "warn");
+    const cmp = rank ? [["Σταθερότητα πρόβλεψης (t)", fmt(a.icT, 2), fmt(b.icT, 2), (b.icT ?? -9) > (a.icT ?? -9)], ["Top 10% vs αγορά", P(a.top), P(b.top), (b.top ?? -9) >= (a.top ?? -9)], ["Top − bottom 10%", P(a.ls), P(b.ls), (b.ls ?? -9) >= (a.ls ?? -9)]]
+      : [["AUC (0.5 = τύχη)", fmt(a.auc, 3), fmt(b.auc, 3), (b.auc ?? 0) > (a.auc ?? 0)], ["Top 10% μέσο R", `${fmt(a.top, 3)}R`, `${fmt(b.top, 3)}R`, (b.top ?? -9) >= (a.top ?? -9)], ["Επιτυχία top 10%", ratioPct(a.hit, 1), ratioPct(b.hit, 1), (b.hit ?? 0) >= (a.hit ?? 0)]];
+    return `<div class="m4"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">${esc(m.label || k)}</b>${st}</div>
+      <table class="cmp"><thead><tr><th></th><th>v3</th><th>v4</th></tr></thead><tbody>${cmp.map(([n, x, y, good]) => `<tr><td>${n}</td><td class="num">${x}</td><td class="num ${good ? "up" : "down"}">${y}</td></tr>`).join("")}</tbody></table>
+      <details><summary>Έλεγχοι και τι μετράει περισσότερο</summary><ul class="list">${(m.gate || []).map((g) => `<li><span>${esc(g)}</span></li>`).join("")}</ul>
+      ${(m.importance || []).length ? `<div class="small muted" style="margin:10px 0 4px">Τα πιο χρήσιμα στοιχεία</div>${m.importance.slice(0, 8).map((i) => `<div class="small">${esc(i.label)} ${i.new ? chip("νέο", "accent") : ""}</div>`).join("")}` : ""}</details></div>`; };
+  return card(`<h3>Νέο μοντέλο v4</h3><p class="soft" style="margin:0 0 10px">${fmt(m4.features, 0)} στοιχεία ανά μετοχή (${fmt(m4.newFeatures, 0)} νέα). Εκπαιδεύτηκε δίπλα στο σημερινό και μετρήθηκε στις ίδιες περιόδους που δεν είχε δει. Χρησιμοποιείται μόνο όπου βγαίνει επικυρωμένο και καλύτερο. Το t διορθώνεται για επικάλυψη ημερών, άρα είναι αυστηρότερο.</p>
+    ${keys.map(row).join("")}${pr.running ? `<div class="small muted" style="margin-top:8px">Τώρα: ${esc(pr.step || "")}</div>` : ""}`);
+}
 routes.model = async () => {
   const d = D(), M = d?.model || {}, st = d?.stats || {};
   $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Μοντέλο πρόβλεψης</h1>
     ${card(`<p style="margin:0" class="soft"><b>Τι κάνει.</b> Κατάταξη (ποιες θα πάνε καλύτερα σε 5 ή 21 ημέρες) και στόχος πριν το stop (day trade, 5 ημέρες, swing). Κοιτάζει ${st.features || 173} στοιχεία ανά μετοχή: τιμές, όγκους, μεταβλητότητα, σύγκριση με αγορά και κλάδο, οικονομικά, ημερομηνίες αποτελεσμάτων.<br><br><b>Πώς ελέγχεται.</b> Μαθαίνει μόνο από το παρελθόν και δοκιμάζεται σε περίοδο που δεν έχει δει. Χρησιμοποιείται μόνο αν περάσει όλα τα κριτήρια.</p>`)}
     ${d ? `<div class="grid2">${[["Ιστορικό", `${d.historyYears || "—"} χρόνια`, `${dday(d.firstDate)} – ${dday(d.asOf)}`], ["Μετοχές", fmt(d.histTickers, 0), `${big(st.rawBars)} τιμές`], ["Στοιχεία εκπαίδευσης", big(st.values), `σε ${fmt(st.seconds, 0)} δευτ.`], ["Ταχύτητα", isNum(st.perSec) ? (st.perSec / 1e6).toFixed(1) + " εκ./δ" : "—", esc(st.engine || "")]]
       .map(([n, v, s]) => `<div class="tile"><div class="t-name">${n}</div><div class="t-val num">${v}</div><div class="small muted">${s}</div></div>`).join("")}</div>` : freshness()}
+    ${model4Section(d)}
+    ${sec("Μοντέλο v3 (σημερινό)")}
     ${["rank21", "rank5", "swing", "short", "day"].filter((k) => M[k]).map((k) => { const m = M[k], rank = m.kind === "rank";
       return card(`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><h3 style="margin:0;flex:1">${esc(m.label || k)}</h3>${m.validated ? chip("Επικυρωμένο", "up") : chip("Δεν επικυρώθηκε", "warn")}</div><div class="small muted" style="margin:4px 0 10px">Εκπαίδευση ${dt(m.createdAt)}, ${fmt(m.nTrain, 0)} παραδείγματα</div>
-        <ul class="list">${(m.gate || []).map((g) => `<li><b class="${g.startsWith("✓") ? "up" : "down"}" style="margin-left:-26px;width:18px">${g.startsWith("✓") ? "✓" : "✗"}</b><span>${esc(g.replace(/^[✓✗]\s*/, ""))}</span></li>`).join("")}</ul>
+        <ul class="list gate">${(m.gate || []).map((g) => `<li><b class="${g.startsWith("✓") ? "up" : "down"}">${g.startsWith("✓") ? "✓" : "✗"}</b><span>${esc(g.replace(/^[✓✗]\s*/, ""))}</span></li>`).join("")}</ul>
         <div style="margin:12px 0">${kv(rank ? [["Συσχέτιση (IC)", `${fmt(m.ic, 4)} (t=${fmt(m.icT, 2)})`], ["Μέρες με θετικό IC", ratioPct(m.icPos, 0)], ["Top 10% vs αγορά", pct((m.top ?? NaN) * 100, 2), cls(m.top)], ["Top − bottom 10%", pct((m.ls ?? NaN) * 100, 2), cls(m.ls)]]
           : [["AUC", fmt(m.auc, 3)], ["Επιτυχία top 10%", ratioPct(m.hit, 1)], ["Μέση επιτυχία", ratioPct(m.base, 1)], ["Top 10% σε R", `${fmt(m.top, 3)}R`, cls(m.top)]])}</div>
         ${decileBars(m.deciles)}`); }).join("") || card(emptyBox("Δεν υπάρχει ακόμα μοντέλο"))}
@@ -504,10 +614,10 @@ routes.guide = async () => {
 };
 
 // ================================================================== αναζήτηση
-async function openSearch() {
+async function openSearch(onPick = null) {
   const rows = D()?.rows || [];
   const sh = document.createElement("div"); sh.className = "sheet"; sh.setAttribute("role", "dialog");
-  sh.innerHTML = `<div class="sheet-head"><input class="input" id="sIn" placeholder="Σύμβολο ή εταιρεία (π.χ. AEHR)" autocomplete="off" autocapitalize="characters" spellcheck="false" style="border-radius:999px"><button class="round-btn" id="sX" aria-label="Κλείσιμο">${icon("x")}</button></div><div class="results" id="sRes"></div>`;
+  sh.innerHTML = `<div class="sheet-head"><input class="input" id="sIn" placeholder="${onPick ? "Ποια εταιρεία θέλεις στις προβλέψεις;" : "Σύμβολο ή εταιρεία (π.χ. AEHR)"}" autocomplete="off" autocapitalize="characters" spellcheck="false" style="border-radius:999px"><button class="round-btn" id="sX" aria-label="Κλείσιμο">${icon("x")}</button></div><div class="results" id="sRes"></div>`;
   document.body.appendChild(sh);
   const close = () => sh.remove();
   $("#sX", sh).addEventListener("click", close);
@@ -517,12 +627,14 @@ async function openSearch() {
     if (Q) { for (const r of rows) { if (r.t === Q) hits.unshift([r, 3]); else if (r.t.startsWith(Q)) hits.push([r, 2]); else if (P.length > 2 && plain(r.n).includes(P)) hits.push([r, 1]); }
       hits.sort((a, b) => b[1] - a[1] || (b[0].dv || 0) - (a[0].dv || 0)); hits = hits.slice(0, 30).map((h) => h[0]);
       if (/^[A-Z^][A-Z0-9.\-]{0,9}$/.test(Q) && !hits.some((h) => h.t === Q)) hits.push({ t: Q, n: "Δοκίμασε αυτό το σύμβολο" }); }
-    else hits = App.watch.map((t) => Data.row(t) || { t, n: "" });
+    else hits = [...new Set([...store.get("recent", []), ...App.watch])].slice(0, 14).map((t) => Data.row(t) || { t, n: "" });
     $("#sRes", sh).innerHTML = hits.map((r) => `<a href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<span style="min-width:0"><b>${esc(r.t)}</b><span class="nm">${esc(r.n || "")}</span></span><span class="num">${isNum(r.p) ? fmt(r.p) : ""}</span></a>`).join("") || `<div class="empty">Τίποτα δεν ταιριάζει</div>`;
   };
-  $("#sRes", sh).addEventListener("click", (e) => { if (e.target.closest("a")) close(); });
+  $("#sRes", sh).addEventListener("click", (e) => { const a = e.target.closest("a"); if (!a) return;
+    const t = decodeURIComponent(a.getAttribute("href").replace("#/s/", "")); store.set("recent", [t, ...store.get("recent", []).filter((x) => x !== t)].slice(0, 8));
+    if (onPick) { e.preventDefault(); onPick(t); } close(); });
   $("#sIn", sh).addEventListener("input", (e) => render(e.target.value));
-  $("#sIn", sh).addEventListener("keydown", (e) => { if (e.key === "Enter") { const a = $("#sRes a", sh); if (a) { location.hash = a.getAttribute("href"); close(); } } if (e.key === "Escape") close(); });
+  $("#sIn", sh).addEventListener("keydown", (e) => { if (e.key === "Enter") { const a = $("#sRes a", sh); if (a) { if (onPick) onPick(decodeURIComponent(a.getAttribute("href").replace("#/s/", ""))); else location.hash = a.getAttribute("href"); close(); } } if (e.key === "Escape") close(); });
   render(""); setTimeout(() => $("#sIn", sh).focus(), 50);
 }
 
@@ -550,16 +662,20 @@ async function boot() {
   renderSession(); setInterval(renderSession, 20000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { /* */ });
   if (location.hash === "#/welcome") location.hash = "#/home";
+  const cached = await Data.loadCached();
+  if (cached) router();
   await Data.detectServer();
   if (Data.server) $("#tabbar").insertAdjacentHTML("beforeend", `<a href="#/tools" data-r="tools" class="desk-only">${icon("model")}<span>Εργαλεία</span></a>`);
-  await Data.load();
-  router();
+  const before = Data.snap?.builtAt;
+  await Promise.all([Data.load(), Data.loadAI()]);
+  if (!cached) router();
+  else if (Data.snap?.builtAt !== before || Data.server) { Data.shards.clear(); router({ soft: true }); }
   refreshQuotes().then(() => { if (Object.keys(App.quotes).length && ["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); });
   setInterval(() => { if (document.visibilityState === "visible") refreshQuotes().then(() => { if (["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); }); }, (Data.server ? 1 : 5) * 60000);
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;
     renderSession();
-    if (Date.now() - Data.loadedAt > 15 * 60000) { const old = Data.snap?.builtAt; await Data.load(); if (Data.snap?.builtAt !== old && App.route !== "s") { Data.shards.clear(); router({ soft: true }); toast("Νέα ανάλυση φορτώθηκε"); } }
+    if (Date.now() - Data.loadedAt > 15 * 60000) { const old = Data.snap?.builtAt; await Promise.all([Data.load(), Data.loadAI()]); if (Data.snap?.builtAt !== old && App.route !== "s") { Data.shards.clear(); router({ soft: true }); toast("Νέα ανάλυση φορτώθηκε"); } }
     refreshQuotes().then(() => { if (["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); });
   });
 }

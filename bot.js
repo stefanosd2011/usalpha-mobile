@@ -106,6 +106,7 @@ function helpText() {
 • **Day trade:** «Τι day trade υπάρχει για αύριο;»
 • **Θέση:** «Πόσες NVDA να πάρω με 2000€;»
 • **Αγορά και κλάδοι:** «Τι κάνει η αγορά;», «Πώς πάει η ενέργεια;»
+• **Οι προβλέψεις μου:** «Τι λένε οι προβλέψεις μου;»
 • **Όροι:** «Τι είναι το RSI;», «Τι είναι stop;»${AI.enabled() || Data.serverAI ? "\n\nΤο AI είναι ενεργό, οπότε μπορούμε να συζητάμε και ελεύθερα." : ""}`;
 }
 function marketText() {
@@ -142,7 +143,23 @@ function explainText(a) {
     `• Βαθμολογία ${fmt(a.sc.score, 0)}/100, RSI ${fmt(m.rsi, 0)}, κινείται ±${fmt(m.atr_pct, 1)}% τη μέρα.`,
     s.plan ? `\n**${s.plan.title}**\n` + (s.plan.lines || []).map((x) => "• " + x).join("\n") : best ? `\n**Σχέδιο (${HZ[best.horizon] || best.horizon})**\n• Είσοδος ${fmt(best.entry_low)}–${fmt(best.entry_high)}, stop ${fmt(best.stop)}, στόχοι ${fmt(best.tp1)} / ${fmt(best.tp2)}` : "",
     dtr ? `\n**Day trade για αύριο:** ζώνη ${fmt(dtr.entryLow)}–${fmt(dtr.entryHigh)}, stop ${fmt(dtr.stop)}, στόχος ${fmt(dtr.tp1)}–${fmt(dtr.tp2)}.` : "",
-    s.risks.length ? "\n**Προσοχή**\n" + s.risks.map((x) => "• " + x).join("\n") : "", `\nΣτοιχεία κλεισίματος ${dday(a.asOf)}. ${NOTE}`].filter(Boolean).join("\n");
+    s.risks.length ? "\n**Προσοχή**\n" + s.risks.map((x) => "• " + x).join("\n") : "", predSummary(a),
+    Data.aiFor(a.ticker) ? `\n**Τι λέει το AI (βραδινή ανάλυση)**\n${Data.aiFor(a.ticker)}` : "", `\nΣτοιχεία κλεισίματος ${dday(a.asOf)}. ${NOTE}`].filter(Boolean).join("\n");
+}
+// τι προβλέπουν τα μοντέλα (v4 όπου είναι ενεργό ή καλύτερο, αλλιώς v3), σε απλά λόγια
+function predSummary(a) {
+  const picks = HZ_ORDER.map((h) => predPick(a, h)).filter(Boolean);
+  if (!picks.length) return "";
+  const any = picks.some((x) => x.p.validated);
+  return `\n**Τι προβλέπουν τα μοντέλα**\n${picks.map(({ p, ver }) => `• ${p.label}: ${predVal(p)}${p.kind === "rank" ? " της αγοράς" : " πιθανότητα στόχου"}${ver === "v4" ? " (νέο v4)" : ""}${p.validated ? " ✓ επικυρωμένο" : ""}`).join("\n")}${any ? "" : "\nΚανένα δεν έχει ακόμα επικυρωθεί, οπότε είναι μόνο ένδειξη."}`;
+}
+function myText() {
+  const l = myList();
+  if (!l.length) return "Δεν έχεις διαλέξει ακόμα εταιρείες για προβλέψεις. Πήγαινε Περισσότερα → «Οι προβλέψεις μου» ή πάτα «Πρόσθεσε στις προβλέψεις μου» σε μια μετοχή.";
+  return ["**Οι προβλέψεις σου**", ...l.slice(0, 15).map((t) => { const r = Data.row(t); if (!r) return `• ${t}: εκτός σημερινής ανάλυσης`;
+    const a5 = rankOf(r, "rank5"), a21 = rankOf(r, "rank21");
+    return `• **${t}** ${fmt(curPx(t, r.p))} (${pct(curCh(t, r.ch))}) · 5 ημέρες ${a5 ? topPct(a5.v) : "—"} · 1 μήνας ${a21 ? topPct(a21.v) : "—"}${dayFor(t) ? " · day trade αύριο" : ""}`; }),
+    "\nTop 10% = από τις καλύτερες 10% της αγοράς στην κατάταξη του μοντέλου. Δεν είναι πιθανότητα κέρδους."].join("\n");
 }
 function whyText(a) {
   const d = D(), ch = curCh(a.ticker, a.chg), m = a.tech?.m || {}, spy = d?.idx?.SPY, secRow = (d?.sectors || []).find((s) => s.sector === a.sector), up = ch >= 0;
@@ -234,7 +251,14 @@ function watchText() {
 function modelText() {
   const M = D()?.model || {}, v = validated();
   return [v.length ? `**Επικυρωμένα μοντέλα:** ${v.map((h) => M[h].label).join(", ")}. Χρησιμοποιούνται στις βαθμολογίες και στις ευκαιρίες.` : "**Κανένα μοντέλο δεν πέρασε τον έλεγχο αυτή την εβδομάδα**, οπότε δεν επηρεάζει τίποτα. Αυτό είναι προστασία: δεν σου δείχνουμε προβλέψεις που δεν απέδειξαν ότι δουλεύουν.",
-    ...Object.values(M).slice(0, 5).map((m) => `• ${m.label}: ${m.validated ? "✓" : "✗"} ${(m.gate || []).filter((g) => g.startsWith("✗")).map((g) => g.replace(/^✗\s*/, "")).slice(0, 1).join("")}`), "\nΛεπτομέρειες: Περισσότερα → Μοντέλο πρόβλεψης."].join("\n");
+    ...Object.values(M).slice(0, 5).map((m) => `• ${m.label}: ${m.validated ? "✓" : "✗"} ${(m.gate || []).filter((g) => g.startsWith("✗")).map((g) => g.replace(/^✗\s*/, "")).slice(0, 1).join("")}`),
+    m4Text(), "\nΛεπτομέρειες: Περισσότερα → Μοντέλο πρόβλεψης."].filter(Boolean).join("\n");
+}
+function m4Text() {
+  const m4 = D()?.model4, M = m4?.models || {}, ks = Object.keys(M);
+  if (!ks.length) return "\n**Νέο μοντέλο v4:** εκπαιδεύεται στην επόμενη βραδινή ανάλυση, με περισσότερα στοιχεία ανά μετοχή. Θα μετρηθεί δίπλα στο σημερινό και θα μπει μόνο αν βγει καλύτερο.";
+  return `\n**Νέο μοντέλο v4** (${m4.features} στοιχεία ανά μετοχή, ${m4.newFeatures} νέα)\n` + ks.map((k) => { const m = M[k];
+    return `• ${m.label}: ${m.active ? "ενεργό, καλύτερο και επικυρωμένο ✓" : m.better ? "καλύτερο από το v3, όχι ακόμα επικυρωμένο" : "δεν ξεπέρασε το v3"}${(m.notes || []).length ? ` (${m.notes.join(", ")})` : ""}`; }).join("\n");
 }
 function catText(cat) {
   const d = D(), rows = (d?.rows || []).filter((r) => r.cats.includes(cat) && (r.dv || 0) >= 3e6).sort((a, b) => (b.s || 0) - (a.s || 0));
@@ -271,6 +295,7 @@ async function answer(text) {
   if (/ανεβηκ|κερδισμεν|πιο πολυ ανεβ|gainers|μεγαλυτερ.*ανοδ/.test(p)) return moversText("up");
   if (/επεσαν|χαμεν|losers|μεγαλυτερ.*πτωσ|πτωσεις/.test(p)) return moversText("down");
   if (/ογκο|volume/.test(p)) return moversText("vol");
+  if (/προβλεψεις μου|τις εταιρειες μου|my predictions/.test(p)) return myText();
   if (/λιστα μου|watchlist|τις μετοχες μου/.test(p)) return watchText();
   if (/μοντελ|προβλεψ|\bml\b|αλγοριθμ/.test(p)) return modelText();
   const cx = CATRX.find(([rx]) => rx.test(p)); if (cx) return catText(cx[1]);
@@ -290,9 +315,13 @@ function aiContext(tk) {
     opportunities: (d?.signals || []).slice(0, 8).map((s) => ({ ticker: s.ticker, horizon: s.horizon, setup: s.setup, entry: [s.entryLow, s.entryHigh], stop: s.stop, targets: [s.tp1, s.tp2] })),
     day_trades: (d?.day?.long || []).slice(0, 6).map((c) => ({ ticker: c.ticker, entry: [c.entryLow, c.entryHigh], stop: c.stop, targets: [c.tp1, c.tp2], why: c.reasons })),
     models_validated: Object.fromEntries(Object.entries(d?.model || {}).map(([k, m]) => [k, !!m.validated])),
+    model_v4: Object.fromEntries(Object.entries(d?.model4?.models || {}).map(([k, m]) => [k, { active: !!m.active, better_than_v3: !!m.better }])),
+    ai_market_note: Data.ai?.market || null, my_companies: myList().slice(0, 15),
     stock: a ? { ticker: a.ticker, name: a.name, sector: a.sector, price: a.q?.price ?? a.price, change_pct: a.chg, score: a.sc.score, bias: a.sc.bias, metrics: a.tech.m, flags: a.tech.flags,
       plain_summary: a.simple, risks: a.risk?.warnings, setups: a.acc.map((s) => ({ horizon: s.horizon, setup: s.setup, entry: [s.entry_low, s.entry_high], stop: s.stop, targets: [s.tp1, s.tp2, s.tp3] })),
-      fundamentals: a.fund?.m, news: (a.news?.items || []).slice(0, 6).map((n) => ({ date: (n.at || "").slice(0, 10), title: n.title, source: n.source })) } : null };
+      fundamentals: a.fund?.m, news: (a.news?.items || []).slice(0, 6).map((n) => ({ date: (n.at || "").slice(0, 10), title: n.title, source: n.source })),
+      predictions: HZ_ORDER.map((h) => predPick(a, h)).filter(Boolean).map(({ p, ver }) => ({ horizon: p.label, value: predVal(p), model: ver, validated: !!p.validated })),
+      ai_note: Data.aiFor(a.ticker) } : null };
 }
 const SYS = "Είσαι ο βοηθός της εφαρμογής US Alpha για αμερικανικές μετοχές. Απαντάς στα ελληνικά, απλά και φιλικά, σαν να εξηγείς σε φίλο που δεν είναι ειδικός, χωρίς ορολογία χωρίς εξήγηση. Στηρίζεσαι στην «Ανάλυση του συστήματος» και στα δεδομένα JSON· δεν επινοείς τιμές ή γεγονότα. Αν κάτι λείπει, το λες. Δεν υπόσχεσαι κέρδη, δεν δίνεις εντολές αγοράς/πώλησης, αναφέρεις τα βασικά ρίσκα και τις ημερομηνίες. Αν ένα μοντέλο δεν είναι επικυρωμένο, λες ότι δεν λαμβάνεται υπόψη. Κλείνεις με «Ανάλυση, όχι επενδυτική συμβουλή.»";
 

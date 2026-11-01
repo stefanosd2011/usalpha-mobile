@@ -179,6 +179,7 @@ svg.spark { display: block; }
 .list li::before { content: "•"; color: var(--muted); }
 .list.pros li::before { content: "+"; color: var(--up); font-weight: 800; } .list.cons li::before, .list.risks li::before { content: "−"; color: var(--down); font-weight: 800; }
 .list li b + span { display: inline; }
+.list.gate li::before { content: none; }
 
 /* ετυμηγορία μετοχής */
 .verdict h3 { margin: 0; font-size: 21px; font-weight: 760; letter-spacing: -.01em; }
@@ -268,6 +269,48 @@ select.input { appearance: none; }
 .toast { background: var(--card-3); color: var(--text); padding: 12px 16px; border-radius: 16px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.35); pointer-events: auto; }
 .toast.high { background: var(--down); color: #fff; }
 
+/* ---------------------------------------------------------------- οι προβλέψεις μου, AI, σύγκριση μοντέλων */
+.mp { background: var(--card); border-radius: var(--r); padding: 14px 16px; display: grid; gap: 10px; color: var(--text); }
+.mp-top { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.mp-top .tk, .card .tk { font-weight: 720; font-size: 16px; }
+.mp-top .nm, .card .stock-top .nm { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-top .px { text-align: right; } .mp-top .px b { display: block; font-weight: 700; }
+.mp-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; color: var(--text-2); }
+.rbar { display: block; height: 8px; border-radius: 99px; background: var(--card-3); overflow: hidden; }
+.rbar i { display: block; height: 100%; border-radius: inherit; transition: width .4s ease; }
+.cta-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.cta-row .c { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.cta-row .nm { color: var(--muted); font-size: 13px; }
+.btn.sm { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.ai-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .ai-head .ico { color: var(--accent-2); width: 20px; height: 20px; }
+.ai-head b { flex: 1; }
+.ai-text { margin: 0 0 8px; white-space: pre-line; color: var(--text); font-size: 14.5px; line-height: 1.55; }
+.ai-line { font-size: 13.5px; color: var(--text-2); background: var(--card-2); border-radius: var(--r-s); padding: 10px 12px; display: -webkit-box;
+  -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ai-line b { color: var(--accent-2); margin-right: 4px; font-size: 12px; letter-spacing: .02em; }
+.chip-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line);
+  background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip-btn .ico { width: 16px; height: 16px; } .chip-btn.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.m4 { padding: 12px 0; } .m4 + .m4 { border-top: 1px solid var(--line); }
+.cmp { width: 100%; border-collapse: collapse; margin: 10px 0 6px; font-size: 13.5px; }
+.cmp th { text-align: right; color: var(--muted); font-weight: 600; font-size: 12.5px; padding: 0 0 4px; }
+.cmp th:first-child { text-align: left; } .cmp td { padding: 5px 0; border-top: 1px solid var(--line); text-align: right; } .cmp td:first-child { text-align: left; color: var(--text-2); }
+details summary { cursor: pointer; color: var(--accent); font-size: 13.5px; font-weight: 600; margin: 6px 0; list-style: none; }
+details summary::-webkit-details-marker { display: none; } details[open] summary { margin-bottom: 10px; }
+/* φόρτωση: σκελετός σελίδας αντί για spinner */
+.skel { border-radius: var(--r); background: linear-gradient(90deg, var(--card) 0%, var(--card-2) 45%, var(--card) 90%); background-size: 220% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+/* απόκριση στο πάτημα (μικρή, γρήγορη) */
+.trade, .mp, .tile, .act, .btn, .menu-row, .chip-btn, .sector-row, .news-item { transition: transform .14s ease, background-color .14s ease, opacity .14s ease; }
+.trade:active, .mp:active, .tile:active, .chip-btn:active { transform: scale(.985); }
+.act:active, .btn:active { transform: scale(.97); } .menu-row:active, .sector-row:active, .news-item:active { background: var(--card-2); }
+/* αλλαγή σελίδας: ήπιο σβήσιμο/εμφάνιση */
+::view-transition-old(root) { animation: 120ms ease-out both vt-out; } ::view-transition-new(root) { animation: 180ms ease-out both vt-in; }
+@keyframes vt-out { to { opacity: 0; } } @keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+.top { view-transition-name: topbar; } .tabbar { view-transition-name: tabbar; } .bot-fab { view-transition-name: botfab; }
+::view-transition-old(topbar), ::view-transition-new(topbar), ::view-transition-old(tabbar), ::view-transition-new(tabbar),
+::view-transition-old(botfab), ::view-transition-new(botfab) { animation: none; }
+
 /* ---------------------------------------------------------------- υπολογιστής: πλευρική μπάρα, δύο στήλες */
 @media (min-width: 980px) {
   .top { padding-left: 252px; }
@@ -284,6 +327,7 @@ select.input { appearance: none; }
   .wide2 > * { min-width: 0; }
   .hscroll { grid-auto-columns: 32%; }
   .hscroll.sm { grid-auto-columns: 23%; }
+  .hscroll .mp { min-width: 0; }
   .sheet { left: auto; width: 460px; border-left: 1px solid var(--line); box-shadow: -20px 0 50px rgba(0,0,0,.3); }
   .chart-main { height: 380px; }
 }
