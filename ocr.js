@@ -35,21 +35,33 @@ const OCR = {
     const W = src.width, H = src.height, sc = W < 1000 ? Math.min(2.2, 1400 / W) : Math.min(1, 2400 / Math.max(W, H));
     const c = document.createElement("canvas"); c.width = Math.round(W * sc); c.height = Math.round(H * sc);
     const g = c.getContext("2d", { willReadFrequently: true }); g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, c.width, c.height);
-    const img = g.getImageData(0, 0, c.width, c.height), d = img.data;
+    const img = g.getImageData(0, 0, c.width, c.height), d = img.data, orig = new Uint8ClampedArray(d);
     let sum = 0; for (let i = 0; i < d.length; i += 4 * 16) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
     const dark = sum / (d.length / (4 * 16)) < 115;
     for (let i = 0; i < d.length; i += 4) {
-      let y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; if (dark) y = 255 - y;
+      // έγχρωμα γράμματα (πράσινα/κόκκινα κέρδη-ζημιές) γίνονται κι αυτά καθαρά μαύρα
+      let y = dark ? 255 - Math.max(d[i], d[i + 1], d[i + 2]) : Math.min(d[i], d[i + 1], d[i + 2]);
       y = Math.max(0, Math.min(255, (y - 128) * 1.25 + 128)); d[i] = d[i + 1] = d[i + 2] = y;
     }
     g.putImageData(img, 0, 0);
-    return c;
+    // πράσινο = θετικό, κόκκινο = αρνητικό (όταν το «−» δεν διαβάζεται)
+    const colorSign = (bb) => {
+      if (!bb) return 0;
+      let red = 0, green = 0;
+      const x0 = Math.max(0, bb.x0 | 0), x1 = Math.min(c.width - 1, bb.x1 | 0), y0 = Math.max(0, bb.y0 | 0), y1 = Math.min(c.height - 1, bb.y1 | 0);
+      for (let y = y0; y <= y1; y += 2) for (let x = x0; x <= x1; x += 2) {
+        const k = (y * c.width + x) * 4, r = orig[k], gg = orig[k + 1], b = orig[k + 2];
+        if (r > gg + 45 && r > b + 25) red++; else if (gg > r + 35 && gg > b) green++;
+      }
+      const n = red + green; return n < 6 ? 0 : red > 2 * green ? -1 : green > 2 * red ? 1 : 0;
+    };
+    return { canvas: c, colorSign };
   },
   async read(file) {
     const w = await this.load();
-    const canvas = await this.prepare(file);
+    const { canvas, colorSign } = await this.prepare(file);
     const { data } = await w.recognize(canvas);
-    return ocrParse(data.lines || [], canvas.width);
+    return ocrParse(data.lines || [], canvas.width, colorSign);
   },
 };
 
@@ -70,7 +82,7 @@ function ocrNum(raw, eu, cur) {
   return parseFloat(raw.replace(/\.(?=.*\.)/g, ""));
 }
 function ocrNums(text, eu) {
-  const out = [], re = /(US\$|\$|€)?\s?([+\-−–]?)\s?(US\$|\$|€)?\s?(\d[\d.,']*\d|\d)(\s?%|\s?€|\s?\$|\s?USD|\s?EUR)?/g;
+  const out = [], re = /(US\$|\$|€)?\s?([+\-−–—~]?)\s?(US\$|\$|€)?\s?(\d[\d.,']*\d|\d)(\s?%|\s?€|\s?\$|\s?USD|\s?EUR)?/g;
   let m;
   while ((m = re.exec(text))) {
     const before = text.slice(Math.max(0, m.index - 22), m.index), after = text.slice(re.lastIndex, re.lastIndex + 16);
@@ -78,7 +90,7 @@ function ocrNums(text, eu) {
     const cur = /€|eur/i.test(cur0) ? "€" : /\$|usd/i.test(cur0) ? "$" : "";
     const v = ocrNum(m[4], eu, cur);
     if (!isFinite(v)) continue;
-    const sign = /[\-−–]/.test(m[2]) ? -1 : 1, signed = !!m[2];
+    const sign = /[\-−–—~]/.test(m[2]) ? -1 : 1, signed = !!m[2];
     out.push({ v: v * sign, abs: v, cur, pct: tail === "%" || /^\s*%/.test(after), signed, dec2: /[.,]\d{2}$/.test(m[4]),
       qty: QTY_AFTER.test(after) || QTY_BEFORE.test(before), avg: AVG_BEFORE.test(before), val: VAL_BEFORE.test(before), raw: m[4],
       inName: /[A-Za-z&]\s?$/.test(before) && /^\s?[A-Za-z]/.test(after) });
@@ -90,13 +102,19 @@ function ocrNums(text, eu) {
 const OCR_STOP_T = new Set(["USD", "EUR", "GBP", "US", "ETF", "ETFS", "AI", "PL", "CEO", "IPO", "TOTAL", "CASH", "LLC", "INC", "PLC", "NV", "SA", "AG",
   "SE", "OK", "AM", "PM", "GMT", "YTD", "ALL", "NEW", "BUY", "SELL", "ISA", "EPS", "PE", "IRA", "FX", "ID", "QR", "PIN", "APP", "MAX", "MIN", "NOW", "ON", "IT", "TV", "UK", "EU"]);
 const OCR_STOP_W = /^(total|value|cash|portfolio|stocks?|shares?|invest(ing|ments?)?|returns?|today|market|balance|account|available|buying power|history|orders?|watchlist|positions?|holdings?|equity|profit|loss|overview|home|search|trade|sell|buy|more|see all|details|daily|performance|news|settings|crypto|commodities|savings|wealth|pies|dividends?)$/;
-function ocrAnchor(text) {
+function ocrAnchor(text, table = false) {
   // 1) σύμβολο που υπάρχει στην ανάλυση (π.χ. AAPL, BRK.B)
   const toks = text.match(/\b[A-Z]{1,5}\d{0,2}(?:[.\-][A-Z])?\b/g) || [];
   for (const tk of toks) {
     const t = tk.replace("-", ".");
     if (OCR_STOP_T.has(t) || !Data.row(t)) continue;
     if (t.length === 1 && text.trim() !== tk) continue;
+    // 1-2 γράμματα στην αρχή μιας γραμμής με αριθμούς είναι συνήθως το γράμμα του λογότυπου (π.χ. «A 12,50 μετοχές»),
+    // όχι σύμβολο — εκτός αν είναι πίνακας ή αν η γραμμή είναι μόνο το σύμβολο (+ όνομα)
+    if (t.length <= 2 && !table && text.trim() !== tk) {
+      const rest = text.replace(tk, "").trim(), nm = plain(Data.row(t)?.n || "").split(" ")[0];
+      if (!nm || !plain(rest).startsWith(nm.slice(0, 4))) continue;
+    }
     return { t, how: "symbol" };
   }
   // 2) όνομα εταιρείας (λατινικά γράμματα)· το γράμμα του λογότυπου στην αρχή (π.χ. «A Apple») αγνοείται
@@ -130,7 +148,7 @@ function ocrHeader(lines) {
   }
   return null;
 }
-function ocrParse(rawLines, W) {
+function ocrParse(rawLines, W, colorSign = () => 0) {
   const lines = rawLines.map((l) => ({ text: String(l.text || "").replace(/\s+/g, " ").trim(), words: l.words || [], bbox: l.bbox,
     yc: (l.bbox.y0 + l.bbox.y1) / 2, h: Math.max(4, l.bbox.y1 - l.bbox.y0) })).filter((l) => l.text);
   const all = lines.map((l) => l.text).join("\n");
@@ -139,7 +157,7 @@ function ocrParse(rawLines, W) {
   const head = ocrHeader(lines);
   // σημεία αναφοράς: μία ανά θέση (σύμβολο ή όνομα), συγχώνευση όσων είναι στην ίδια σειρά
   let anchors = [];
-  for (const l of lines) { const a = ocrAnchor(l.text); if (a) anchors.push({ ...a, yc: l.yc, line: l }); }
+  for (const l of lines) { if (head && l.yc <= head.y) continue; const a = ocrAnchor(l.text, !!head); if (a) anchors.push({ ...a, yc: l.yc, line: l }); }
   anchors.sort((a, b) => a.yc - b.yc);
   const merged = [];
   for (const a of anchors) {
@@ -165,6 +183,11 @@ function ocrParse(rawLines, W) {
       }
       // αριθμός μέσα στο όνομα (π.χ. «S&P 500 ETF») δεν είναι ποσότητα ή τιμή
       if (n.inName && !n.cur && !n.pct && !n.qty && !n.role) continue;
+      if (!n.signed && (n.pct || n.cur || n.dec2)) { // πρόσημο από το χρώμα (πράσινο/κόκκινο)
+        const w = (l.words || []).find((w) => (w.text || "").includes(n.raw));
+        const sg = colorSign(w?.bbox);
+        if (sg) { n.v = sg * n.abs; n.signed = true; }
+      }
       nums.push(n);
     }
     const r = Data.row(a.t) || {}, q = App.quotes?.[a.t], p = q?.price ?? r.p;
@@ -190,7 +213,11 @@ function ocrParse(rawLines, W) {
     if (avg == null && qty) {
       if (plN && value != null) { avg = (value - Math.sign(plN.v) * usd(plN)) / qty; note.push("τιμή αγοράς από το κέρδος/ζημιά"); }
       else if (pct && value != null && pct.v > -99) { avg = value / (1 + pct.v / 100) / qty; note.push("τιμή αγοράς από το % απόδοσης"); }
-      else if (p) { const c = money.find((n) => n.role !== "last" && Math.abs(usd(n) - p) / p > 0.015 && usd(n) > 0.2 * p && usd(n) < 5 * p); if (c) avg = usd(c); }
+      else if (p) { // ένας αριθμός ανά μετοχή που δεν είναι ούτε η σημερινή τιμή ούτε η αξία της θέσης
+        const c = money.find((n) => n.role !== "last" && !n.signed && Math.abs(usd(n) - p) / p > 0.015 && usd(n) > 0.2 * p && usd(n) < 5 * p
+          && (value == null || Math.abs(usd(n) - value) / value > 0.02) && !(qty > 1.05 && value != null && usd(n) > value * 0.9));
+        if (c) avg = usd(c);
+      }
     }
     if (qty || value != null) items.push({ ticker: a.t, name: a.name || r.n || null, shares: qty, avg_price: avg != null && isFinite(avg) && avg > 0 ? Math.round(avg * 100) / 100 : null,
       value: value != null ? Math.round(value * 100) / 100 : null, currency: "USD", note: note.join(" · ") });
