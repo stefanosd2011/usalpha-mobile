@@ -552,9 +552,9 @@ function autoTrainCard(d) {
   if (!d) return "";
   const days = d.stats?.retrainDays || 7;
   const last = [...Object.values(d.model || {}).map((m) => m.createdAt), ...Object.values(d.model4?.models || {}).map((m) => m.createdAt)].filter(Boolean).sort();
-  const oldest = last[0], newest = last[last.length - 1], next = oldest ? new Date(Date.parse(oldest) + days * 864e5) : null;
+  const oldest = last[0], newest = last[last.length - 1], next = oldest ? new Date(Date.parse(oldest) + Math.max(1, Math.round(days)) * 864e5) : null;
   return card(`<h3>Μαθαίνει μόνο του</h3><ul class="list"><li><span>Κάθε βράδυ, μετά το κλείσιμο, νέες προβλέψεις για όλες τις μετοχές με τα τελευταία δεδομένα.</span></li>
-    <li><span>Κάθε ${days} ημέρες νέα εκπαίδευση από την αρχή: το παλιό μοντέλο, το νέο v4 και όλες οι παραλλαγές του, στις ίδιες περιόδους. Κρατιέται αυτόματα το καλύτερο.</span></li>
+    <li><span>${days <= 1.5 ? "Κάθε βράδυ" : `Κάθε ${days} ημέρες`} νέα εκπαίδευση από την αρχή: το παλιό μοντέλο, το νέο v4 και όλες οι παραλλαγές του, στις ίδιες περιόδους. Κρατιέται αυτόματα το καλύτερο.</span></li>
     <li><span>Κάθε πρόταση παρακολουθείται μέχρι να κλείσει, ώστε να φαίνεται πώς πήγε στην πράξη.</span></li></ul>
     ${kv([["Τελευταία εκπαίδευση", newest ? dt(newest) : "—"], ["Επόμενη αυτόματη", next ? dday(next.toISOString().slice(0, 10)) : "στην επόμενη ανάλυση"]])}`);
 }
