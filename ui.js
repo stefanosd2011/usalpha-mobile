@@ -576,7 +576,7 @@ function autoLine(m) {
   const nm = (m.variantNames || {})[m.variant] || m.variant || "—";
   return `<div class="auto-line"><div><span class="muted">Επιλέχθηκε:</span> ${esc(m.variant || "")} — ${esc(nm)}</div>
     <div><span class="muted">Αυτόματη βελτίωση:</span> ${fmt(a.tried, 0)} δοκιμές συνολικά, απόψε ${fmt(a.tonight, 0)}. ${a.changed ? `<b class="up">Βρέθηκε καλύτερος συνδυασμός.</b>` : "Ο καλύτερος μέχρι τώρα δεν ξεπεράστηκε."}</div>
-    <div class="small muted">Καλύτερος μέχρι τώρα: ${esc(a.champion || "—")}</div></div>`;
+    ${String(m.variant || "").startsWith("S") ? "" : `<div class="small muted">Καλύτερος της αναζήτησης μέχρι τώρα: ${esc(a.champion || "—")}</div>`}</div>`;
 }
 // Νέο μοντέλο v4: μετρήθηκε στις ΙΔΙΕΣ περιόδους με το v3, ώστε το «πριν / μετά» να είναι πραγματικό
 function model4Section(d) {
@@ -588,7 +588,7 @@ function model4Section(d) {
     const st = m.active ? chip("Ενεργό: καλύτερο και επικυρωμένο", "up") : m.better ? chip("Καλύτερο από το v3, όχι ακόμα επικυρωμένο", "accent") : chip("Δεν ξεπέρασε το v3", "warn");
     const cmp = rank ? [["Σταθερότητα πρόβλεψης (t)", fmt(a.icT, 2), fmt(b.icT, 2), (b.icT ?? -9) > (a.icT ?? -9)], ["Top 10% vs αγορά", P(a.top), P(b.top), (b.top ?? -9) >= (a.top ?? -9)], ["Top − bottom 10%", P(a.ls), P(b.ls), (b.ls ?? -9) >= (a.ls ?? -9)]]
       : [["AUC (0.5 = τύχη)", fmt(a.auc, 3), fmt(b.auc, 3), (b.auc ?? 0) > (a.auc ?? 0)], ["Top 10% μέσο R", `${fmt(a.top, 3)}R`, `${fmt(b.top, 3)}R`, (b.top ?? -9) >= (a.top ?? -9)], ["Επιτυχία top 10%", ratioPct(a.hit, 1), ratioPct(b.hit, 1), (b.hit ?? 0) >= (a.hit ?? 0)]];
-    return `<div class="m4"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">${esc(m.label || k)}</b>${st}</div>
+    return `<div class="m4"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1 1 220px">${esc(m.label || k)}</b>${st}</div>
       <table class="cmp"><thead><tr><th></th><th>v3</th><th>v4</th></tr></thead><tbody>${cmp.map(([n, x, y, good]) => `<tr><td>${n}</td><td class="num">${x}</td><td class="num ${good ? "up" : "down"}">${y}</td></tr>`).join("")}</tbody></table>${autoLine(m)}
       <details><summary>Έλεγχοι και τι μετράει περισσότερο</summary><ul class="list">${(m.gate || []).map((g) => `<li><span>${esc(g)}</span></li>`).join("")}</ul>
       ${(m.importance || []).length ? `<div class="small muted" style="margin:10px 0 4px">Τα πιο χρήσιμα στοιχεία</div>${m.importance.slice(0, 8).map((i) => `<div class="small">${esc(i.label)} ${i.new ? chip("νέο", "accent") : ""}</div>`).join("")}` : ""}</details></div>`; };
