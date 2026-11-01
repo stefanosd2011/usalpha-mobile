@@ -259,7 +259,7 @@ function m4Text() {
   const m4 = D()?.model4, M = m4?.models || {}, ks = Object.keys(M);
   if (!ks.length) return "\n**Νέο μοντέλο v4:** εκπαιδεύεται στην επόμενη βραδινή ανάλυση, με περισσότερα στοιχεία ανά μετοχή. Θα μετρηθεί δίπλα στο σημερινό και θα μπει μόνο αν βγει καλύτερο.";
   return `\n**Νέο μοντέλο v4** (${m4.features} στοιχεία ανά μετοχή, ${m4.newFeatures} νέα)\n` + ks.map((k) => { const m = M[k];
-    return `• ${m.label}: ${m.active ? "ενεργό, καλύτερο και επικυρωμένο ✓" : m.better ? "καλύτερο από το v3, όχι ακόμα επικυρωμένο" : "δεν ξεπέρασε το v3"}${(m.notes || []).length ? ` (${m.notes.join(", ")})` : ""}`; }).join("\n");
+    return `• ${m.label}: ${m.active ? "ενεργό, καλύτερο και επικυρωμένο ✓" : m.better ? "καλύτερο από το v3, όχι ακόμα επικυρωμένο" : "δεν ξεπέρασε το v3"}${(m.notes || []).length ? ` (${m.notes.join(", ")})` : ""}${m.auto ? ` · αυτόματη βελτίωση: ${m.auto.tried} δοκιμές${m.auto.changed ? ", απόψε βρέθηκε καλύτερος συνδυασμός" : ""}` : ""}`; }).join("\n");
 }
 function catText(cat) {
   const d = D(), rows = (d?.rows || []).filter((r) => r.cats.includes(cat) && (r.dv || 0) >= 3e6).sort((a, b) => (b.s || 0) - (a.s || 0));

@@ -389,3 +389,110 @@ details.hist { padding: 12px 16px; } details.hist + details.hist { border-top: 1
 details.hist summary { display: grid; grid-template-columns: 22px 1fr; gap: 8px; cursor: pointer; list-style: none; }
 details.hist summary::-webkit-details-marker { display: none; } details.hist summary .ico { width: 18px; height: 18px; color: var(--accent-2); margin-top: 2px; }
 details.hist .ai-text { margin: 8px 0 0 30px; }
+
+/* ================================================================== ΕΜΦΑΝΙΣΗ 2: «γυαλί» + χρώμα διάθεσης αγοράς
+   Προστέθηκε από πάνω (τίποτα δεν αφαιρέθηκε). Το φόντο πίσω από την κορυφή παίρνει το χρώμα της ημέρας:
+   πράσινο όταν ανεβαίνει το S&P 500, κοραλλί όταν πέφτει, μπλε-μωβ όταν είναι σχεδόν αμετάβλητο. */
+:root {
+  --bg: #070b16; --card: rgba(19, 25, 41, .78); --card-2: rgba(148, 163, 214, .085); --card-3: rgba(148, 163, 214, .16);
+  --line: rgba(148, 163, 214, .1); --edge: rgba(255, 255, 255, .07); --edge-hi: rgba(255, 255, 255, .11);
+  --text: #eef1f8; --text-2: #aeb6c9; --muted: #78819a;
+  --accent: #5b8cff; --accent-2: #a17dff; --accent-soft: rgba(91, 140, 255, .15);
+  --up: #27d896; --up-soft: rgba(39, 216, 150, .13); --down: #ff6680; --down-soft: rgba(255, 102, 128, .13);
+  --glass: rgba(16, 21, 36, .62); --glass-line: rgba(255, 255, 255, .09); --shadow: 0 14px 44px rgba(2, 6, 20, .5);
+  --mood-a: #4f6bff; --mood-b: #8b5cf6;
+  --hero: radial-gradient(130% 150% at 0% 0%, #4a6cff 0%, #6c3ff0 46%, #1d1650 100%);
+  --r: 24px; --r-s: 15px; --tabbar: 66px;
+}
+:root[data-theme="light"] {
+  --bg: #edf0f7; --card: rgba(255, 255, 255, .86); --card-2: rgba(30, 41, 79, .055); --card-3: rgba(30, 41, 79, .1);
+  --line: rgba(30, 41, 79, .08); --edge: rgba(30, 41, 79, .06); --edge-hi: rgba(255, 255, 255, .9);
+  --text: #0c1222; --text-2: #46506a; --muted: #7d869d;
+  --accent: #2f63f5; --accent-2: #7447ee; --accent-soft: rgba(47, 99, 245, .1);
+  --up: #0a9a63; --up-soft: rgba(10, 154, 99, .1); --down: #de3557; --down-soft: rgba(222, 53, 87, .09);
+  --glass: rgba(255, 255, 255, .7); --glass-line: rgba(30, 41, 79, .09); --shadow: 0 14px 40px rgba(30, 41, 79, .14);
+}
+:root[data-mood="up"] { --mood-a: #12c08a; --mood-b: #1d7bd8;
+  --hero: radial-gradient(130% 150% at 0% 0%, #13b985 0%, #0d7f86 40%, #142a6b 100%); }
+:root[data-mood="down"] { --mood-a: #f0476b; --mood-b: #8e3bd6;
+  --hero: radial-gradient(130% 150% at 0% 0%, #ee4a6e 0%, #9b2a6e 42%, #2a1554 100%); }
+html { background: var(--bg); }
+body { background: transparent; }
+.aurora { position: fixed; inset: 0 0 auto 0; height: 560px; z-index: -1; pointer-events: none; overflow: hidden; }
+.aurora::before, .aurora::after { content: ""; position: absolute; border-radius: 50%; filter: blur(70px); transition: background 1.2s ease, opacity 1.2s ease; }
+.aurora::before { width: 520px; height: 420px; left: -160px; top: -200px; background: var(--mood-a); opacity: .34; }
+.aurora::after { width: 460px; height: 380px; right: -180px; top: -150px; background: var(--mood-b); opacity: .26; }
+:root[data-theme="light"] .aurora::before { opacity: .2; } :root[data-theme="light"] .aurora::after { opacity: .14; }
+
+/* κάρτες: λεπτό φωτεινό περίγραμμα και ελαφρύ φως από πάνω (βάθος χωρίς βαριές σκιές) */
+.card, .trade, .mp, .tile, .note, .setup.card { border: 1px solid var(--edge);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .028), rgba(255, 255, 255, 0) 38%); }
+:root[data-theme="light"] .card, :root[data-theme="light"] .trade, :root[data-theme="light"] .mp, :root[data-theme="light"] .tile {
+  box-shadow: 0 1px 2px rgba(30, 41, 79, .05), 0 8px 24px rgba(30, 41, 79, .05); }
+.tile { border-radius: 20px; }
+.kv div, .levels div, .vladder div, .mkt { border: 1px solid var(--edge); }
+.sec-head { margin: 8px 4px -4px; } .sec-head h2 { font-size: 20px; font-weight: 760; letter-spacing: -.02em; }
+.page-title { font-size: 32px; font-weight: 790; letter-spacing: -.03em; }
+
+/* πάνω μπάρα: διάφανο γυαλί */
+.top { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-bottom: 1px solid transparent; transition: border-color .2s ease, background-color .2s ease; }
+body.scrolled .top { border-bottom-color: var(--line); background: color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); }
+.search-pill, .round-btn { background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.avatar-btn { background: var(--hero); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); }
+
+/* κάρτα αγοράς: ο αριθμός κυριαρχεί, το χρώμα λέει την ημέρα */
+.hero { border-radius: 28px; padding: 20px 20px 16px; box-shadow: 0 18px 50px color-mix(in srgb, var(--mood-a) 26%, transparent), inset 0 1px 0 rgba(255, 255, 255, .22); }
+.hero .h-val { font-size: 46px; font-weight: 760; letter-spacing: -.035em; }
+.hero .h-chg { background: rgba(255, 255, 255, .2); backdrop-filter: blur(6px); }
+.hero .meter { display: block; height: 5px; padding: 0; background: rgba(255, 255, 255, .22); }
+.hero svg.h-spark { opacity: .55; }
+
+/* γρήγορες ενέργειες: γυάλινα κουμπιά */
+.act .c { width: 56px; height: 56px; border-radius: 20px; background: var(--card); border: 1px solid var(--edge); }
+.act .c.pri { background: var(--hero); border-color: transparent; box-shadow: 0 8px 22px color-mix(in srgb, var(--mood-a) 35%, transparent); }
+
+/* κάτω μπάρα: πλωτό γυαλί με «χάπι» στην ενεργή καρτέλα */
+.tabbar { left: 10px; right: 10px; bottom: calc(var(--safe-b) + 8px); height: var(--tabbar); padding: 6px; border-radius: 26px; border: 1px solid var(--glass-line);
+  background: var(--glass); backdrop-filter: blur(24px) saturate(170%); -webkit-backdrop-filter: blur(24px) saturate(170%); box-shadow: var(--shadow); gap: 2px; }
+.tabbar a { border-radius: 20px; gap: 2px; transition: background-color .18s ease, color .18s ease; }
+.tabbar a .ico { width: 21px; height: 21px; }
+.tabbar a.on { background: var(--card-3); color: var(--text); }
+.tabbar a.on .ico { color: var(--accent); }
+.view { padding-bottom: calc(var(--tabbar) + var(--safe-b) + 100px); }
+.bot-fab { bottom: calc(var(--tabbar) + var(--safe-b) + 20px); height: 48px; border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--mood-b) 40%, transparent); }
+.upd-bar { bottom: calc(var(--tabbar) + var(--safe-b) + 80px); }
+
+/* λίστες και κουμπιά */
+.seg { background: var(--card-2); border: 1px solid var(--edge); }
+.seg button.on { background: var(--card-3); box-shadow: inset 0 1px 0 var(--edge-hi); }
+:root[data-theme="light"] .seg button.on { background: #fff; }
+.btn { border: 1px solid var(--edge); } .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
+.chip { border: 1px solid transparent; }
+.input { background: var(--card-2); border-color: var(--edge); } .input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.logo { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.sheet { background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.msg.bot { border: 1px solid var(--edge); } .msg.user { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.toast { background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.toast.high { background: var(--down); }
+.skel { background: linear-gradient(90deg, var(--card-2) 0%, var(--card-3) 45%, var(--card-2) 90%); background-size: 220% 100%; border: 1px solid var(--edge); }
+.card.brief { background: linear-gradient(160deg, color-mix(in srgb, var(--accent-2) 12%, var(--card)) 0%, var(--card) 60%); }
+
+/* υπολογιστής: πλωτή πλευρική μπάρα από γυαλί */
+@media (min-width: 980px) {
+  .tabbar { left: 12px; top: 12px; bottom: 12px; right: auto; width: 220px; height: auto; border-radius: 26px; padding: calc(var(--safe-t) + 76px) 10px 16px; gap: 4px; }
+  .tabbar a { border-radius: 16px; }
+  .tabbar::before { left: 24px; top: calc(var(--safe-t) + 26px); }
+  .top { padding-left: 252px; }
+  .aurora { left: 232px; }
+  .card:hover, .trade:hover, .mp:hover, .tile:hover { border-color: var(--edge-hi); }
+  .bot-fab { bottom: 24px; }
+  .upd-bar { bottom: 90px; }
+}
+@media (max-width: 380px) { .tabbar { left: 6px; right: 6px; padding: 5px; } .tabbar a span { font-size: 9.5px; } }
+/* ο βοηθός μικραίνει σε κύκλο όταν κάνεις κύλιση, για να μην κρύβει περιεχόμενο */
+.bot-fab { transition: padding .2s ease, gap .2s ease, font-size .2s ease, transform .14s ease; }
+@media (max-width: 979px) { body.scrolled .bot-fab { padding: 0; width: 48px; justify-content: center; gap: 0; font-size: 0; } }
+.auto-line { display: grid; gap: 4px; margin: 8px 0 4px; padding: 10px 12px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--edge); font-size: 13.5px; }

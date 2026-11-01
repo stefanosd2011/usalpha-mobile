@@ -81,7 +81,13 @@ const curCh = (t, c) => App.quotes[t]?.chg ?? c;
 // ================================================================== router
 const routes = {};
 const skeleton = () => `<div class="stack" aria-busy="true" aria-label="Φόρτωση"><div class="skel" style="height:150px;border-radius:28px"></div><div class="skel" style="height:22px;width:40%"></div><div class="skel" style="height:120px"></div><div class="skel" style="height:120px"></div></div>`;
+function setMood() {
+  const d = D(), q = App.quotes?.SPY, c = q?.chg ?? d?.idx?.SPY?.ch;
+  document.documentElement.dataset.mood = !isNum(c) ? "flat" : c >= 0.15 ? "up" : c <= -0.15 ? "down" : "flat";
+}
+addEventListener("scroll", () => document.body.classList.toggle("scrolled", scrollY > 8), { passive: true });
 async function router(opt = {}) {
+  try { setMood(); } catch { /* πριν φορτώσουν τα δεδομένα */ }
   const h = location.hash.replace(/^#\/?/, "") || "home";
   const [name, ...rest] = h.split("/");
   const first = !App.route, changed = name !== App.route; App.route = name;
@@ -558,8 +564,19 @@ function autoTrainCard(d) {
   const oldest = last[0], newest = last[last.length - 1], next = oldest ? new Date(Date.parse(oldest) + Math.max(1, Math.round(days)) * 864e5) : null;
   return card(`<h3>Μαθαίνει μόνο του</h3><ul class="list"><li><span>Κάθε βράδυ, μετά το κλείσιμο, νέες προβλέψεις για όλες τις μετοχές με τα τελευταία δεδομένα.</span></li>
     <li><span>${days <= 1.5 ? "Κάθε βράδυ" : `Κάθε ${days} ημέρες`} νέα εκπαίδευση από την αρχή: το παλιό μοντέλο, το νέο v4 και όλες οι παραλλαγές του, στις ίδιες περιόδους. Κρατιέται αυτόματα το καλύτερο.</span></li>
-    <li><span>Κάθε πρόταση παρακολουθείται μέχρι να κλείσει, ώστε να φαίνεται πώς πήγε στην πράξη.</span></li></ul>
-    ${kv([["Τελευταία εκπαίδευση", newest ? dt(newest) : "—"], ["Επόμενη αυτόματη", next ? dday(next.toISOString().slice(0, 10)) : "στην επόμενη ανάλυση"]])}`);
+    <li><span>Κάθε πρόταση παρακολουθείται μέχρι να κλείσει, ώστε να φαίνεται πώς πήγε στην πράξη.</span></li>
+    <li><span>Αυτόματη βελτίωση: κάθε βράδυ δοκιμάζει νέους συνδυασμούς ρυθμίσεων και στοιχείων στις ίδιες περιόδους ελέγχου. Ο καλύτερος κρατιέται και αλλάζει μόνο αν βρεθεί κάτι που τον ξεπερνά. Όσο περισσότερες δοκιμές, τόσο αυστηρότερο το όριο, για να μη «φουσκώνει» το αποτέλεσμα.</span></li></ul>
+    <div style="margin-top:12px">${kv([["Τελευταία εκπαίδευση", newest ? dt(newest) : "—"], ["Επόμενη αυτόματη", next ? dday(next.toISOString().slice(0, 10)) : "στην επόμενη ανάλυση"],
+      ...(autoTried(d) ? [["Δοκιμές αυτόματης βελτίωσης", fmt(autoTried(d), 0)], ["Βελτιώσεις που κρατήθηκαν", fmt(autoWins(d), 0)]] : [])])}</div>`);
+}
+const autoTried = (d) => Object.values(d?.model4?.models || {}).reduce((a, m) => a + (m.auto?.tried || 0), 0);
+const autoWins = (d) => Object.values(d?.model4?.models || {}).reduce((a, m) => a + (m.auto?.changed ? 1 : 0), 0);
+function autoLine(m) {
+  const a = m.auto; if (!a) return "";
+  const nm = (m.variantNames || {})[m.variant] || m.variant || "—";
+  return `<div class="auto-line"><div><span class="muted">Επιλέχθηκε:</span> ${esc(m.variant || "")} — ${esc(nm)}</div>
+    <div><span class="muted">Αυτόματη βελτίωση:</span> ${fmt(a.tried, 0)} δοκιμές συνολικά, απόψε ${fmt(a.tonight, 0)}. ${a.changed ? `<b class="up">Βρέθηκε καλύτερος συνδυασμός.</b>` : "Ο καλύτερος μέχρι τώρα δεν ξεπεράστηκε."}</div>
+    <div class="small muted">Καλύτερος μέχρι τώρα: ${esc(a.champion || "—")}</div></div>`;
 }
 // Νέο μοντέλο v4: μετρήθηκε στις ΙΔΙΕΣ περιόδους με το v3, ώστε το «πριν / μετά» να είναι πραγματικό
 function model4Section(d) {
@@ -572,7 +589,7 @@ function model4Section(d) {
     const cmp = rank ? [["Σταθερότητα πρόβλεψης (t)", fmt(a.icT, 2), fmt(b.icT, 2), (b.icT ?? -9) > (a.icT ?? -9)], ["Top 10% vs αγορά", P(a.top), P(b.top), (b.top ?? -9) >= (a.top ?? -9)], ["Top − bottom 10%", P(a.ls), P(b.ls), (b.ls ?? -9) >= (a.ls ?? -9)]]
       : [["AUC (0.5 = τύχη)", fmt(a.auc, 3), fmt(b.auc, 3), (b.auc ?? 0) > (a.auc ?? 0)], ["Top 10% μέσο R", `${fmt(a.top, 3)}R`, `${fmt(b.top, 3)}R`, (b.top ?? -9) >= (a.top ?? -9)], ["Επιτυχία top 10%", ratioPct(a.hit, 1), ratioPct(b.hit, 1), (b.hit ?? 0) >= (a.hit ?? 0)]];
     return `<div class="m4"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">${esc(m.label || k)}</b>${st}</div>
-      <table class="cmp"><thead><tr><th></th><th>v3</th><th>v4</th></tr></thead><tbody>${cmp.map(([n, x, y, good]) => `<tr><td>${n}</td><td class="num">${x}</td><td class="num ${good ? "up" : "down"}">${y}</td></tr>`).join("")}</tbody></table>
+      <table class="cmp"><thead><tr><th></th><th>v3</th><th>v4</th></tr></thead><tbody>${cmp.map(([n, x, y, good]) => `<tr><td>${n}</td><td class="num">${x}</td><td class="num ${good ? "up" : "down"}">${y}</td></tr>`).join("")}</tbody></table>${autoLine(m)}
       <details><summary>Έλεγχοι και τι μετράει περισσότερο</summary><ul class="list">${(m.gate || []).map((g) => `<li><span>${esc(g)}</span></li>`).join("")}</ul>
       ${(m.importance || []).length ? `<div class="small muted" style="margin:10px 0 4px">Τα πιο χρήσιμα στοιχεία</div>${m.importance.slice(0, 8).map((i) => `<div class="small">${esc(i.label)} ${i.new ? chip("νέο", "accent") : ""}</div>`).join("")}` : ""}</details></div>`; };
   return card(`<h3>Νέο μοντέλο v4</h3><p class="soft" style="margin:0 0 10px">${fmt(m4.features, 0)} στοιχεία ανά μετοχή (${fmt(m4.newFeatures, 0)} νέα). Εκπαιδεύτηκε δίπλα στο σημερινό και μετρήθηκε στις ίδιες περιόδους που δεν είχε δει. Χρησιμοποιείται μόνο όπου βγαίνει επικυρωμένο και καλύτερο. Το t διορθώνεται για επικάλυψη ημερών, άρα είναι αυστηρότερο.</p>
@@ -680,10 +697,10 @@ function setupUpdates() {
 }
 // ================================================================== εκκίνηση (καλείται από το bot.js)
 function toggleTheme() { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; store.set("theme", t);
-  $('meta[name="theme-color"]').setAttribute("content", t === "dark" ? "#0b0c10" : "#f3f4f7"); router({ soft: true }); }
+  $('meta[name="theme-color"]').setAttribute("content", t === "dark" ? "#070b16" : "#edf0f7"); router({ soft: true }); }
 async function boot() {
   document.documentElement.dataset.theme = store.get("theme", "dark");
-  $('meta[name="theme-color"]')?.setAttribute("content", store.get("theme", "dark") === "dark" ? "#0b0c10" : "#f3f4f7");
+  $('meta[name="theme-color"]')?.setAttribute("content", store.get("theme", "dark") === "dark" ? "#070b16" : "#edf0f7");
   $("#tabbar").innerHTML = [["home", "Αρχική", "home"], ["day", "Day trade", "bolt"], ["signals", "Ευκαιρίες", "target"], ["pf", "Χαρτοφυλάκιο", "wallet"], ["scan", "Scanner", "filter"], ["watch", "Λίστα", "star"]]
     .map(([r, l, i]) => `<a href="#/${r}" data-r="${r}">${icon(i)}<span>${l}</span></a>`).join("");
   $("#searchIco").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS.search}</svg>`;
