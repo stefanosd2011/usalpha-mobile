@@ -147,7 +147,7 @@ routes.home = async () => {
   if (!d) { $("#view").innerHTML = `<div class="stack">${freshness()}</div>`; return; }
   const m = d.market || {}, R = REGIME[m.regime] || { tone: "neutral", head: "—", long: "Αγορά" };
   const spy = d.idx?.SPY || {}, q = App.quotes.SPY, sp = q?.price ?? spy.p, sc = q?.chg ?? spy.ch;
-  const hero = `<section class="hero">${spark(spy.sp, { w: 200, h: 80, cls: "h-spark" })}<div class="h-lbl">S&P 500 · ${q ? `τιμή ${qTime(q)}` : `κλείσιμο ${dshort(d.asOf)}`}</div>
+  const hero = `<section class="hero">${spark(spy.sp, { w: 200, h: 80, cls: "h-spark" })}<div class="h-lbl">S&P 500 (SPY) · ${q ? `τιμή ${qTime(q)}` : `κλείσιμο ${dshort(d.asOf)}`}</div>
     <div class="h-val num">${fmt(sp)}</div><div class="h-chg num">${pct(sc)}</div>
     <div class="h-mood">Διάθεση αγοράς: ${R.head} ${isNum(m.score) ? `(${m.score.toFixed(0)}/100)` : ""}<small>${esc((m.simple || [])[0] || R.long)}</small></div>
     <div class="meter"><i style="width:${clamp(m.score ?? 0)}%"></i></div></section>`;
