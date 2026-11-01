@@ -54,6 +54,12 @@ jobs:
           SEC_USER_AGENT: "USAlphaMobile research stefanosd2011@users.noreply.github.com"
           PYTHONUNBUFFERED: "1"
           PYTHONWARNINGS: "ignore"
+          ML4_TARGET_ROWS: "1600000"
+          # κρυφό κλειδί AI (Settings → Secrets → Actions). Δεν εμφανίζεται ποτέ σε logs ή στη σελίδα.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AI_PROVIDER: "gemini"
+          AI_MAX_CALLS_PER_MIN: "8"
+          AI_MONTHLY_BUDGET_USD: "50"
         run: python tools/export_mobile.py --out "$GITHUB_WORKSPACE/_site/data" --budget-min 320
 
       - name: Αποθήκευση δεδομένων για αύριο
@@ -68,6 +74,19 @@ jobs:
           cp index.html app.css *.js manifest.webmanifest *.png _site/
           touch _site/.nojekyll
           du -sh _site; ls _site/data | head
+
+      - name: Αναφορά μοντέλων στο repository (ιστορικό αποτελεσμάτων)
+        if: always()
+        run: |
+          if [ -f _site/data/model_report.json ]; then
+            mkdir -p reports && cp _site/data/model_report.json reports/model.json
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add reports/model.json
+            if ! git diff --cached --quiet; then
+              git commit -q -m "Αναφορά μοντέλων [skip ci]" && (git pull -q --rebase && git push -q) || echo "η αναφορά δεν ανέβηκε"
+            fi
+          fi
 
       - name: Η σελίδα κρατιέται για τις ενημερώσεις τιμών μέσα στη μέρα
         uses: actions/cache/save@v4
