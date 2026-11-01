@@ -74,7 +74,17 @@ const Keys = {
 // Κάθε βράδυ, μετά το κλείσιμο της αγοράς, το GitHub τρέχει τον πλήρη αλγόριθμο (ίδιο με του υπολογιστή)
 // και δημοσιεύει έτοιμα αποτελέσματα. Η εφαρμογή απλώς τα διαβάζει: δεν χρειάζεται κωδικό ούτε server.
 const Data = {
-  snap: null, shards: new Map(), error: null, loadedAt: 0,
+  snap: null, shards: new Map(), error: null, loadedAt: 0, server: false, serverAI: false,
+  // στον υπολογιστή η ίδια εφαρμογή σερβίρεται από το πρόγραμμα (ζωντανά δεδομένα + AI του προγράμματος)
+  async detectServer() {
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2500);
+      const r = await fetch("api/status", { cache: "no-store", signal: ctl.signal }); clearTimeout(t);
+      if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) return false;
+      const j = await r.json(); this.server = !!j.session; this.serverAI = !!j.ai_enabled;
+    } catch { this.server = false; }
+    return this.server;
+  },
   async load() {
     try {
       const r = await fetch("data/snapshot.json", { cache: "no-cache" });
@@ -171,6 +181,11 @@ function sessionInfo() {
 // ================================================================== AI βοηθός (προαιρετικά: Gemini ή Claude, με κωδικό στο τηλέφωνο)
 const AI = {
   enabled() { return !!(Keys.gemini || Keys.claude); },
+  async server(message, ticker, history) {
+    const r = await fetch("api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, ticker, history }) });
+    if (!r.ok) throw new Error("Βοηθός προγράμματος " + r.status);
+    return r.json();
+  },
   async ask(system, prompt) {
     if (Keys.claude) { try { return await this.claude(system, prompt); } catch (e) { if (!Keys.gemini) throw e; } }
     return this.gemini(system, prompt);

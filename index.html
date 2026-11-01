@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>US Alpha</title>
 <meta name="description" content="Ανάλυση όλης της αμερικανικής αγοράς κάθε βράδυ: ευκαιρίες, stop, στόχοι, μοντέλο πρόβλεψης.">
-<meta name="theme-color" content="#0d1424">
+<meta name="theme-color" content="#0b0c10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,8 +22,9 @@
 <body>
 <header class="top">
   <div class="top-row">
-    <a class="brand" href="#/home" aria-label="US Alpha, αρχική"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 24 L12 14 L18 19 L28 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="7" r="3" fill="currentColor"/></svg>US Alpha</a>
-    <div class="top-actions"><button class="icon-btn" id="searchBtn" aria-label="Αναζήτηση μετοχής"></button><button class="icon-btn" id="themeBtn" aria-label="Φωτεινό ή σκούρο θέμα"></button></div>
+    <button class="avatar-btn" id="meBtn" aria-label="Περισσότερα">US</button>
+    <button class="search-pill" id="searchBtn" aria-label="Αναζήτηση μετοχής"><span class="ico" id="searchIco"></span><span>Αναζήτηση μετοχής</span></button>
+    <button class="round-btn" id="themeBtn" aria-label="Φωτεινό ή σκούρο θέμα"></button>
   </div>
   <div class="session" id="session" aria-live="polite"></div>
 </header>
@@ -34,5 +35,6 @@
 <noscript>Η εφαρμογή χρειάζεται JavaScript.</noscript>
 <script src="core.js"></script>
 <script src="ui.js"></script>
+<script src="bot.js"></script>
 </body>
 </html>
