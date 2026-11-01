@@ -412,10 +412,7 @@ details.hist .ai-text { margin: 8px 0 0 30px; }
   --up: #0a9a63; --up-soft: rgba(10, 154, 99, .1); --down: #de3557; --down-soft: rgba(222, 53, 87, .09);
   --glass: rgba(255, 255, 255, .7); --glass-line: rgba(30, 41, 79, .09); --shadow: 0 14px 40px rgba(30, 41, 79, .14);
 }
-:root[data-mood="up"] { --mood-a: #12c08a; --mood-b: #1d7bd8;
-  --hero: radial-gradient(130% 150% at 0% 0%, #13b985 0%, #0d7f86 40%, #142a6b 100%); }
-:root[data-mood="down"] { --mood-a: #f0476b; --mood-b: #8e3bd6;
-  --hero: radial-gradient(130% 150% at 0% 0%, #ee4a6e 0%, #9b2a6e 42%, #2a1554 100%); }
+/* (το χρώμα ΔΕΝ αλλάζει πια με την ημέρα: μπλε πάντα, όπως πριν — βλ. «Χρώματα» στο τέλος) */
 html { background: var(--bg); }
 body { background: transparent; }
 .aurora { position: fixed; inset: 0 0 auto 0; height: 560px; z-index: -1; pointer-events: none; overflow: hidden; }
@@ -496,3 +493,17 @@ body.scrolled .top { border-bottom-color: var(--line); background: color-mix(in 
 .bot-fab { transition: padding .2s ease, gap .2s ease, font-size .2s ease, transform .14s ease; }
 @media (max-width: 979px) { body.scrolled .bot-fab { padding: 0; width: 48px; justify-content: center; gap: 0; font-size: 0; } }
 .auto-line { display: grid; gap: 4px; margin: 8px 0 4px; padding: 10px 12px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--edge); font-size: 13.5px; }
+
+/* ================================================================== Χρώματα: μπλε όπως πριν (κρατιέται η νέα εμφάνιση) */
+:root {
+  --accent: #4d84ff; --accent-2: #8a5cff; --accent-soft: rgba(77, 132, 255, .16);
+  --up: #2fd47c; --up-soft: rgba(47, 212, 124, .14); --down: #ff5d5d; --down-soft: rgba(255, 93, 93, .14);
+  --mood-a: #3157ff; --mood-b: #6a3df0;
+  --hero: radial-gradient(120% 140% at 0% 0%, #3157ff 0%, #6a3df0 48%, #241a5c 100%);
+}
+:root[data-theme="light"] {
+  --accent: #2f6bff; --accent-2: #7a4dff; --accent-soft: rgba(47, 107, 255, .10);
+  --up: #0f9e5c; --up-soft: rgba(15, 158, 92, .10); --down: #e0403f; --down-soft: rgba(224, 64, 63, .09);
+  --hero: radial-gradient(120% 140% at 0% 0%, #3a64ff 0%, #6f45f2 50%, #3a2a8f 100%);
+}
+.aurora::before { opacity: .26; } .aurora::after { opacity: .2; }

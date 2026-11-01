@@ -345,10 +345,11 @@ function pfImport() {
   const render = () => {
     sh.innerHTML = `<div class="sheet-head"><b style="flex:1">Χαρτοφυλάκιο από φωτογραφία</b><button class="round-btn" id="iX" aria-label="Κλείσιμο">${icon("x")}</button></div>
       <div class="results" style="padding:0 16px 24px"><div class="stack">
-      ${Keys.claude || Keys.gemini ? "" : keyBox(render)}${!Keys.claude && !Keys.gemini && Data.server ? `<div class="small muted">Ή συνέχισε χωρίς κλειδί εδώ: θα χρησιμοποιηθεί το AI του προγράμματος του υπολογιστή, αν έχει.</div>` : ""}
       <p class="soft" style="margin:0">Βγάλε screenshot τις θέσεις σου από την εφαρμογή του broker (μπορείς και πολλά μαζί) και διάλεξέ τα εδώ. Θα τα διαβάσω, θα κάνω τους υπολογισμούς και θα σου δείξω τι βρήκα πριν αποθηκευτεί οτιδήποτε.</p>
-      <label class="btn primary block ${AI.canVision() ? "" : "disabled"}" style="cursor:pointer">${icon("plus")}Διάλεξε screenshot<input type="file" id="iF" accept="image/*" multiple hidden ${AI.canVision() ? "" : "disabled"}></label>
-      <div class="small muted">Η φωτογραφία πηγαίνει μόνο στο AI που έχεις συνδέσει, για να διαβαστεί. Δεν αποθηκεύεται πουθενά.</div>
+      <label class="btn primary block" style="cursor:pointer">${icon("plus")}Διάλεξε screenshot<input type="file" id="iF" accept="image/*" multiple hidden></label>
+      <div class="small muted">${AI.canVision() ? (Data.server && !Keys.claude && !Keys.gemini ? "Διαβάζεται με το AI του προγράμματος του υπολογιστή (χωρίς κωδικό από σένα). Αν δεν απαντήσει, διαβάζεται μέσα στη συσκευή." : "Διαβάζεται με το AI που έχεις συνδέσει. Αν δεν απαντήσει, διαβάζεται μέσα στη συσκευή.")
+        : "Διαβάζεται μέσα στη συσκευή σου, χωρίς κωδικό. Η φωτογραφία δεν ανεβαίνει πουθενά. Την πρώτη φορά κατεβαίνει το πρόγραμμα ανάγνωσης (~6 MB)."}</div>
+      ${Keys.claude || Keys.gemini || Data.server ? "" : `<details><summary>Προαιρετικά: πιο ακριβές διάβασμα με AI</summary>${keyBox(render)}</details>`}
       <div id="iOut" class="stack"></div></div></div>`;
     $("#iX", sh).addEventListener("click", () => sh.remove());
     $("#iF", sh)?.addEventListener("change", (e) => readShots([...e.target.files]));
@@ -357,16 +358,30 @@ function pfImport() {
     if (!files.length) return;
     const out = $("#iOut", sh); const found = []; let cash = null, cashCur = null;
     for (let i = 0; i < files.length; i++) {
-      out.innerHTML = `<div class="loading" style="padding:30px 0"><span class="spinner"></span>Διαβάζω ${files.length > 1 ? `τη φωτογραφία ${i + 1} από ${files.length}` : "τη φωτογραφία"}…</div>`;
+      const which = files.length > 1 ? `τη φωτογραφία ${i + 1} από ${files.length}` : "τη φωτογραφία";
+      const show = (msg) => { out.innerHTML = `<div class="loading" style="padding:30px 0"><span class="spinner"></span>${msg}</div>`; };
+      show(`Διαβάζω ${which}…`);
       try {
-        const img = await imgToB64(files[i]);
-        const txt = await AI.vision(VISION_SYS, VISION_PROMPT, img);
-        const m = String(txt).match(/\{[\s\S]*\}/); const j = JSON.parse(m ? m[0] : txt);
+        let j = null;
+        if (AI.canVision()) { // πρώτα το AI (αν υπάρχει), αλλιώς/αν αποτύχει: ανάγνωση μέσα στη συσκευή
+          try { const img = await imgToB64(files[i]); const txt = await AI.vision(VISION_SYS, VISION_PROMPT, img);
+            const m = String(txt).match(/\{[\s\S]*\}/); j = JSON.parse(m ? m[0] : txt); } catch { j = null; }
+        }
+        if (!j || !(j.items || []).length) {
+          OCR.onProgress = (m) => { const st = String(m?.status || ""), pr = Math.round((m?.progress || 0) * 100);
+            if (/recogniz/.test(st)) show(`Διαβάζω ${which}… ${pr}%`); else if (/load|initializ/.test(st)) show("Ετοιμάζω την ανάγνωση στη συσκευή (μόνο την πρώτη φορά)…"); };
+          j = await OCR.read(files[i]);
+        }
         for (const it of j.items || []) found.push(it);
         if (numOf(j.cash) != null) { cash = numOf(j.cash); cashCur = j.cash_currency; }
       } catch (er) { out.innerHTML = `<div class="callout"><b>Δεν διαβάστηκε.</b> ${esc(er.message)}</div>`; return; }
     }
-    review(found, cash, cashCur);
+    // ίδια μετοχή σε δύο screenshots: κρατάμε μία φορά (αυτή με τα περισσότερα στοιχεία)
+    const score = (x) => ["shares", "avg_price", "value"].filter((k) => numOf(x[k]) != null).length;
+    const uniq = [];
+    for (const it of found) { const t = matchTicker(it), k = t || plain(it.name || ""); const o = uniq.find((u) => u.k === k);
+      if (!o) uniq.push({ k, it }); else if (score(it) > score(o.it)) o.it = it; }
+    review(uniq.map((u) => u.it), cash, cashCur);
   };
   const review = (items, cash, cashCur) => {
     const fx = fxRate(), rows = items.map((it) => {
@@ -375,7 +390,7 @@ function pfImport() {
       if (px == null && numOf(it.cost_total) != null && shN) px = numOf(it.cost_total) / shN;
       if (px == null && numOf(it.value) != null && numOf(it.pl) != null && shN) px = (numOf(it.value) - numOf(it.pl)) / shN;
       if (px != null && cur === "EUR" && fx) px *= fx;
-      return { t, name: it.name, sh: shN, px: px != null ? Math.round(px * 100) / 100 : null, ok: !!(t && Data.row(t)), cur, noFx: cur === "EUR" && !fx };
+      return { t, name: it.name, sh: shN, px: px != null ? Math.round(px * 100) / 100 : null, ok: !!(t && Data.row(t)), cur, noFx: cur === "EUR" && !fx, note: it.note || "" };
     }).filter((r) => r.t || r.name);
     const out = $("#iOut", sh);
     if (!rows.length) { out.innerHTML = `<div class="callout"><b>Δεν βρήκα θέσεις στη φωτογραφία.</b> Δοκίμασε screenshot όπου φαίνονται τα σύμβολα και ο αριθμός μετοχών.</div>`; return; }
@@ -383,7 +398,7 @@ function pfImport() {
     out.innerHTML = `${card(`<h3>Βρήκα ${rows.length} θέσεις</h3><p class="small soft" style="margin-top:0">Έλεγξε και διόρθωσε ό,τι χρειάζεται. Τιμή αγοράς ανά μετοχή σε $${rows.some((r) => r.cur === "EUR") && fx ? " (όσες ήταν σε € μετατράπηκαν με 1 € = " + fmt(fx, 4) + " $)" : ""}.</p>
       <div class="imp">${rows.map((r, i) => `<div class="imp-row" data-i="${i}"><input type="checkbox" checked aria-label="Να μπει">
         <input class="input" data-k="t" value="${esc(r.t || "")}" placeholder="Σύμβολο" autocapitalize="characters"><input class="input" data-k="sh" inputmode="decimal" value="${r.sh ?? ""}" placeholder="Μετοχές"><input class="input" data-k="px" inputmode="decimal" value="${r.px ?? ""}" placeholder="Τιμή $">
-        <div class="small ${r.ok ? "muted" : "warn"}" style="grid-column:2/-1">${esc(r.name || "")}${r.ok ? "" : " · δεν βρέθηκε στην ανάλυση, έλεγξε το σύμβολο"}${r.px == null ? " · λείπει η τιμή αγοράς" : ""}${r.noFx ? " · η τιμή είναι σε €, γράψ' την σε $" : ""}</div></div>`).join("")}</div>
+        <div class="small ${r.ok ? "muted" : "warn"}" style="grid-column:2/-1">${esc(r.name || "")}${r.ok ? "" : " · δεν βρέθηκε στην ανάλυση, έλεγξε το σύμβολο"}${r.px == null ? " · λείπει η τιμή αγοράς" + (Data.row(r.t)?.p ? ` (σήμερα $${fmt(Data.row(r.t).p)})` : "") : ""}${r.noFx ? " · η τιμή είναι σε €, γράψ' την σε $" : ""}${r.note ? ` · ${esc(r.note)}, έλεγξέ το` : ""}</div></div>`).join("")}</div>
       ${cashEur != null ? `<label class="small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="iCash" checked>Μετρητά: ${eur(cashEur, 2)}</label>` : ""}
       <div class="field" style="margin-top:12px"><b>Πώς να μπουν</b>${seg([["merge", "Ενημέρωση θέσεων"], ["replace", "Αντικατάσταση όλων"]], "merge", "im")}</div>
       <button class="btn primary block" id="iSave" style="margin-top:12px">Αποθήκευση στο χαρτοφυλάκιο</button>`)}`;

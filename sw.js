@@ -1,7 +1,7 @@
 /* Service worker: η εφαρμογή ανοίγει και χωρίς σύνδεση, με την τελευταία ανάλυση που είχε φορτώσει. */
-const VERSION = "uam-v9";
-const SHELL = ["./", "index.html", "app.css", "core.js", "ui.js", "pf.js", "brief.js", "bot.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
-const CDN = /^https:\/\/(unpkg\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
+const VERSION = "uam-v10";
+const SHELL = ["./", "index.html", "app.css", "core.js", "ui.js", "pf.js", "ocr.js", "brief.js", "bot.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
+const CDN = /^https:\/\/(unpkg\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net\/npm\/tesseract)\//;
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((x) => new Request(x, { cache: "reload" })))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
