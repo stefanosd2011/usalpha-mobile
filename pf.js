@@ -230,7 +230,7 @@ routes.goal = async () => {
       <div class="grid2"><label class="field"><b>Σε πόσο καιρό;</b><select class="input" name="months">${PERIODS.map(([m, l]) => `<option value="${m}" ${m === f.months ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <label class="field"><b>Θα βάζεις κάθε μήνα (€)</b><input class="input" name="monthly" inputmode="decimal" value="${f.monthly}"></label></div>
       <div class="field"><b>Πόσο ρίσκο αντέχεις;</b>${seg(RISKS.map(([k, l]) => [k, l]), f.risk, "gr")}<div class="small muted" id="grx">${RISKS.find((x) => x[0] === f.risk)[2]}</div></div>
-      <button class="btn primary block">Δείξε μου το σχέδιο</button></form>`)}
+      <button class="btn primary block">Δείξε μου το πλήρες σχέδιο</button></form>`)}
     <div id="gOut" class="stack"></div></div>`;
   let risk = f.risk;
   $$("[data-gr]").forEach((b) => b.addEventListener("click", (e) => { e.preventDefault(); risk = b.dataset.gr; $$("[data-gr]").forEach((x) => x.classList.toggle("on", x === b)); $("#grx").textContent = RISKS.find((x) => x[0] === risk)[2]; }));
@@ -253,6 +253,7 @@ routes.goal = async () => {
         ${kv([["Σε δείκτη", `${al.core}% (${eur(G.start * al.core / 100)})`], ["Σε μετοχές", `${al.sat}% (${eur(G.start * al.sat / 100)})`], ["Το πολύ ανά μετοχή", `${al.pos}% (${eur(G.start * al.pos / 100)})`], ["Ρίσκο ανά θέση ως το stop", `${al.risk}%`]])}
         <ul class="list" style="margin-top:10px"><li><span>Κάθε θέση με stop από την πρώτη μέρα· δεν το κατεβάζεις ποτέ.</span></li><li><span>Δεν βάζεις χρήματα που θα χρειαστείς τα επόμενα χρόνια.</span></li><li><span>Μία φορά τον μήνα κοιτάς το χαρτοφυλάκιο εδώ: αδύναμες θέσεις έξω, δυνατές μένουν.</span></li></ul>`)}
       ${sec("Υποψήφιες από τη σημερινή ανάλυση", "", "για το κομμάτι σε μετοχές")}${card(cands.length ? cands.map(candRow).join("") : emptyBox("Καμία κατάλληλη για αυτό το ρίσκο σήμερα", "Ξαναδές αύριο, μετά τη βραδινή ανάλυση."), "flush")}
+      ${typeof goalPlan === "function" ? goalPlan(G) : ""}
       <div class="note">Υπολογισμοί και ανάλυση για να αποφασίσεις μόνος σου, όχι επενδυτική συμβουλή. Οι αποδόσεις του παρελθόντος δεν εγγυώνται τις μελλοντικές.</div>
       ${PF.goal ? `<button class="btn block" id="gDel">${icon("trash")}Διαγραφή στόχου</button>` : ""}`;
     $("#gDel")?.addEventListener("click", () => { store.set("goal", null); toast("Ο στόχος διαγράφηκε"); router({ soft: true }); });
