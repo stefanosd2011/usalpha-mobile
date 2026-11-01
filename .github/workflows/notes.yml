@@ -1,0 +1,90 @@
+# Ενημερώσεις AI τρεις φορές τη μέρα (ώρα Ελλάδας): πρωί (~09:15), μεσημέρι πριν ανοίξει η Wall Street (~15:45)
+# και βράδυ μετά το κλείσιμο (~23:15). Παίρνει την τελευταία βραδινή ανάλυση (cache), παγκόσμιες αγορές, τιμές εκτός
+# ωραρίου και φρέσκες ειδήσεις, και αλλάζει ΜΟΝΟ το data/ai.json. Το κλειδί AI έρχεται μόνο από κρυφό secret.
+# Κάθε ώρα έχει δύο προγραμματισμούς (θερινή/χειμερινή ώρα)· το script τρέχει μόνο στη σωστή ώρα και μία φορά τη μέρα.
+name: Ενημερώσεις AI (πρωί · μεσημέρι · βράδυ)
+
+on:
+  schedule:
+    - cron: "17 6,7 * * 1-5"
+    - cron: "47 12,13 * * 1-5"
+    - cron: "17 20,21 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Ποια ενημέρωση"
+        type: choice
+        options: [auto, morning, premarket, evening]
+        default: auto
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      deploy: ${{ steps.n.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Τελευταία ανάλυση
+        uses: actions/cache/restore@v4
+        with:
+          path: _site
+          key: usalpha-site-v1-${{ github.run_id }}
+          restore-keys: usalpha-site-v1-
+
+      - name: Ενημέρωση AI
+        id: n
+        env:
+          PYTHONWARNINGS: "ignore"
+          PYTHONUNBUFFERED: "1"
+          USALPHA_NO_SCHEDULER: "1"
+          USALPHA_DB: ${{ runner.temp }}/notes.db
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_PROVIDER: "gemini"
+          AI_MAX_CALLS_PER_MIN: "8"
+          AI_MONTHLY_BUDGET_USD: "50"
+        run: |
+          mkdir -p eng && tar -xzf engine.tgz -C eng
+          pip install --disable-pip-version-check -q -r eng/requirements-ci.txt
+          mkdir -p _site/data
+          python eng/tools/notes_mobile.py _site --slot "${{ inputs.slot || 'auto' }}" ${{ github.event_name != 'schedule' && '--force' || '' }}
+          cp index.html app.css *.js manifest.webmanifest *.png _site/
+          touch _site/.nojekyll
+
+      - name: Η νέα ενημέρωση κρατιέται και για τις τιμές μέσα στη μέρα
+        if: steps.n.outputs.deploy == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _site
+          key: usalpha-site-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - if: steps.n.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
