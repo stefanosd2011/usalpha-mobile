@@ -311,6 +311,25 @@ details summary::-webkit-details-marker { display: none; } details[open] summary
 ::view-transition-old(topbar), ::view-transition-new(topbar), ::view-transition-old(tabbar), ::view-transition-new(tabbar),
 ::view-transition-old(botfab), ::view-transition-new(botfab) { animation: none; }
 
+/* ---------------------------------------------------------------- χαρτοφυλάκιο και στόχος */
+.pf-card { display: grid; gap: 12px; color: var(--text); }
+.pf-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.pf-val { font-size: 30px; font-weight: 780; letter-spacing: -.01em; margin: 2px 0 4px; }
+.goal-bar { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.goal-bar .pbar { position: relative; overflow: visible; }
+.goal-bar .pbar s { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text-2); border-radius: 2px; text-decoration: none; }
+.pf-h + .pf-h { border-top: 1px solid var(--line); }
+.pf-h details { padding: 0 16px 12px; } .pf-h details summary { margin: 0; display: flex; gap: 8px; align-items: center; color: var(--text-2); }
+.imp { display: grid; gap: 10px; }
+.imp-row { display: grid; grid-template-columns: 22px minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+.imp-row .input { min-height: 40px; padding: 0 10px; }
+.keybox { border: 1px solid var(--accent-soft); }
+.kv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; }
+.kv-row + .kv-row { border-top: 1px solid var(--line); }
+label.btn.disabled { opacity: .45; pointer-events: none; }
+.tabbar { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 979px) { .tabbar a span { font-size: 10px; letter-spacing: -.01em; } }
+
 /* ---------------------------------------------------------------- υπολογιστής: πλευρική μπάρα, δύο στήλες */
 @media (min-width: 980px) {
   .top { padding-left: 252px; }

@@ -15,6 +15,8 @@ const ICONS = {
   news: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>', spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>', pc: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  wallet: '<path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1V7z"/><path d="M4 7l11-3v3"/><circle cx="16" cy="13.5" r="1.2" fill="currentColor"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 const icon = (n) => `<span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg></span>`;
 const chip = (t, k = "") => `<span class="chip ${k}">${t}</span>`;
@@ -83,7 +85,7 @@ async function router(opt = {}) {
   const h = location.hash.replace(/^#\/?/, "") || "home";
   const [name, ...rest] = h.split("/");
   const first = !App.route, changed = name !== App.route; App.route = name;
-  const tab = { home: "home", day: "day", signals: "signals", scan: "scan", s: "scan", watch: "watch", tools: "tools" }[name] || "";
+  const tab = { home: "home", day: "day", signals: "signals", scan: "scan", s: "scan", watch: "watch", tools: "tools", pf: "pf", goal: "pf" }[name] || "";
   $$(".tabbar a").forEach((a) => a.classList.toggle("on", a.dataset.r === tab));
   disposeCharts();
   const view = $("#view"), y = window.scrollY;
@@ -207,7 +209,8 @@ routes.home = async () => {
   const mx = Math.max(1, ...secs.map((s) => Math.abs(s.rel21)));
   const sectors = secs.length ? `${sec("Κλάδοι", "", "vs S&P 500, 1 μήνας")}${card(secs.map((s) => `<a class="sector-row" href="#/s/${encodeURIComponent(s.etf || "")}"><span>${esc(s.sector)}</span><span class="bar"><i style="${s.rel21 >= 0 ? "left:50%" : "right:50%"};width:${(Math.abs(s.rel21) / mx * 50).toFixed(1)}%;background:${s.rel21 >= 0 ? "var(--up)" : "var(--down)"}"></i></span><b class="num ${cls(s.rel21)}" style="text-align:right">${pct(s.rel21, 1)}</b></a>`).join(""), "flush")}` : "";
   const news = (d.news || []).length ? `${sec("Ειδήσεις", `<a class="more" href="#/news">Όλες</a>`)}${card(d.news.slice(0, 5).map(newsItem).join(""), "flush")}` : "";
-  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${mine}${ai}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
+  const pfc = typeof pfHomeCard === "function" ? pfHomeCard() : "";
+  $("#view").innerHTML = `<div class="stack">${freshness()}${hero}${actions}${pfc}${mine}${ai}${day}<div class="wide2"><div class="stack">${opps}</div><div class="stack">${sec("Δείκτες")}${tiles}${model}${movers}</div></div><div class="wide2"><div class="stack">${sectors}</div><div class="stack">${news}</div></div>
     <div class="small muted" style="text-align:center">Ανάλυση ${fmt(d.analyzed, 0)} μετοχών, κλείσιμο ${dday(d.asOf)}, ενημέρωση ${dt(d.builtAt)}. Ανάλυση, όχι επενδυτική συμβουλή.</div></div>`;
   $$("[data-mv]").forEach((b) => b.addEventListener("click", () => { store.set("movers", b.dataset.mv); $$("[data-mv]").forEach((x) => x.classList.toggle("on", x === b)); $("#mvList").innerHTML = mv(b.dataset.mv).slice(0, 6).map((r) => rowItem(r, b.dataset.mv === "vol" ? "rv" : "chg")).join(""); }));
 };
@@ -456,11 +459,12 @@ function drawChart(a) {
 const menu = (href, ic, t, sub) => `<a class="menu-row" href="${href}"><span class="c">${icon(ic)}</span><div><div style="font-weight:650">${t}</div><div class="nm">${sub}</div></div>${icon("chev")}</a>`;
 routes.more = async () => {
   $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Περισσότερα</h1>
+    ${card(menu("#/pf", "wallet", "Χαρτοφυλάκιο", "Οι μετοχές σου, αποδόσεις, βαθμολογία, από φωτογραφία") + menu("#/goal", "target", "Ο στόχος μου", "π.χ. 1000 € → 2000 €: πόσο ρεαλιστικό και πώς"), "flush")}
     ${card(menu("#/my", "star", "Οι προβλέψεις μου", myList().length ? `${myList().length} εταιρείες` : "Διάλεξε εταιρείες για καθημερινές προβλέψεις"), "flush")}
     ${card(menu("#/model", "model", "Μοντέλο πρόβλεψης", "Πώς ελέγχθηκε και αν επικυρώθηκε") + menu("#/news", "news", "Ειδήσεις", "Αγορά και μετοχές") + menu("#/data", "data", "Δεδομένα", "Πότε ενημερώθηκε, πηγές")
       + menu("#/settings", "theme", "Εμφάνιση", "Φωτεινό ή σκούρο θέμα") + menu("#/guide", "info", "Οδηγός", "Εγκατάσταση στο iPhone, τι να περιμένεις"), "flush")}
     ${Data.server ? card(menu("#/tools", "model", "Εργαλεία υπολογιστή", "Εκπαίδευση μοντέλων, νέα ανάλυση τώρα") + menu("classic", "pc", "Πλήρες πρόγραμμα", "Backtest, paper trading, αναφορές, ρυθμίσεις: όλα όπως ήταν"), "flush") : ""}
-    ${card(menu("#/ai", "spark", "Σύνδεση AI", AI.enabled() || Data.serverAI ? "Συνδεδεμένο" : "Προαιρετικό"), "flush")}
+    ${card(menu("#/ai", "spark", "Σύνδεση AI (κλειδί Claude ή Gemini)", AI.enabled() ? `Συνδεδεμένο${Keys.claude ? ": Claude" : ""}${Keys.gemini ? (Keys.claude ? " + Gemini" : ": Gemini") : ""}` : Data.serverAI ? "AI προγράμματος" : "Βάλε κλειδί για φωτογραφίες και ελεύθερη συζήτηση"), "flush")}
     <div class="note">US Alpha: ανάλυση και προτάσεις, όχι επενδυτική συμβουλή. Καμία αυτόματη εντολή.</div></div>`;
 };
 // Οι προβλέψεις μου: ο χρήστης διαλέγει εταιρείες και βλέπει εδώ ό,τι προβλέπουν τα μοντέλα, με σήμα «νέο» κάθε μέρα
@@ -527,21 +531,13 @@ routes.tools = async () => {
   if (ml.running || ml4.running || sc.running) _toolsTimer = setTimeout(() => { if (App.route === "tools") router({ soft: true }); }, 4000);
 };
 routes.ai = async () => {
-  if (Data.server) {
-    $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Σύνδεση AI</h1>${card(Data.serverAI ? `<b>Ο βοηθός χρησιμοποιεί το AI του προγράμματος.</b><p class="soft">Ο κωδικός μένει στον υπολογιστή σου και δεν φαίνεται εδώ.</p>`
-      : `<b>Το πρόγραμμα δεν έχει κωδικό AI.</b><p class="soft">Ο βοηθός απαντά με τα στοιχεία του συστήματος. Κωδικός μπαίνει από την κλασική προβολή → Ρυθμίσεις.</p><a class="btn" href="classic">Κλασική προβολή</a>`)}</div>`;
-    return;
-  }
-  const on = !!Keys.gemini;
-  $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Σύνδεση AI</h1><p class="page-sub">Προαιρετικό. Με κωδικό Google Gemini ο βοηθός συζητά ελεύθερα. Ο κωδικός μένει μόνο σε αυτή τη συσκευή και δεν εμφανίζεται ξανά.</p>
-    ${on ? card(`<b>Συνδεδεμένο</b><p class="soft">Ο βοηθός χρησιμοποιεί το Gemini.</p><button class="btn danger block" id="aiOff">Αποσύνδεση</button>`)
-      : card(`<form id="aiF" class="form"><label class="field"><b>Κωδικός Gemini</b><input class="input" type="password" name="k" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Επικόλληση"></label>
-        <button class="btn primary block">Σύνδεση</button></form><div class="small muted" style="margin-top:10px">Δωρεάν κωδικός: aistudio.google.com/apikey → Create API key.</div>`)}</div>`;
-  $("#aiOff")?.addEventListener("click", () => { Keys.set("gemini", ""); store.set("ai.geminiModel", ""); toast("Αποσυνδέθηκε"); router({ soft: true }); });
-  $("#aiF")?.addEventListener("submit", async (e) => { e.preventDefault(); const v = new FormData(e.target).get("k"); if (!String(v).trim()) return; const b = e.target.querySelector("button"); b.disabled = true; b.textContent = "Έλεγχος…";
-    Keys.set("gemini", v); store.set("ai.geminiModel", "");
-    try { await AI.gemini("Απάντα σύντομα.", "Γράψε μόνο: ΟΚ"); toast("Ο βοηθός συνδέθηκε με το Gemini"); e.target.reset(); router({ soft: true }); }
-    catch (er) { Keys.set("gemini", ""); toast(esc(er.message), "high"); b.disabled = false; b.textContent = "Σύνδεση"; } });
+  const row = (name, k) => Keys[k] ? `<div class="kv-row"><div><b>${name}</b><div class="small muted">Συνδεδεμένο σε αυτή τη συσκευή</div></div><button class="btn sm danger" data-koff="${k}">Αποσύνδεση</button></div>` : "";
+  $("#view").innerHTML = `<div class="stack"><h1 class="page-title">Σύνδεση AI</h1><p class="page-sub">Με κλειδί AI η εφαρμογή διαβάζει φωτογραφίες (π.χ. το χαρτοφυλάκιό σου από screenshot) και ο βοηθός συζητά ελεύθερα. Το κλειδί μένει μόνο σε αυτή τη συσκευή.</p>
+    ${Data.server ? card(Data.serverAI ? `<b>Το πρόγραμμα του υπολογιστή έχει δικό του AI.</b><p class="soft small" style="margin:4px 0 0">Ο κωδικός του μένει στον υπολογιστή. Μπορείς να βάλεις και κλειδί εδώ, για φωτογραφίες.</p>` : `<b>Το πρόγραμμα του υπολογιστή δεν έχει κλειδί AI.</b><p class="soft small" style="margin:4px 0 0">Βάλε κλειδί εδώ ή από το πλήρες πρόγραμμα → Ρυθμίσεις.</p>`) : ""}
+    ${AI.enabled() ? card(row("Claude", "claude") + row("Gemini", "gemini")) : ""}
+    ${!Keys.claude || !Keys.gemini ? keyBox(() => router({ soft: true })) : ""}
+    <div class="note">Στο GitHub υπάρχει και κρυφό κλειδί (Settings → Secrets → Actions): GEMINI_API_KEY ή ANTHROPIC_API_KEY. Με αυτό το AI γράφει κάθε βράδυ τις σημειώσεις της αγοράς για όλους, χωρίς να βάλεις κλειδί στο κινητό.</div></div>`;
+  $$("[data-koff]").forEach((b) => b.addEventListener("click", () => { Keys.set(b.dataset.koff, ""); store.set(b.dataset.koff === "gemini" ? "ai.geminiModel" : "ai.claudeModel", ""); toast("Αποσυνδέθηκε"); router({ soft: true }); }));
 };
 function decileBars(dec) {
   if (!dec?.length) return "";
@@ -550,6 +546,17 @@ function decileBars(dec) {
     ${dec.map((x, i) => { const v = vals[i], h = (Math.abs(v) / mx) * (mid - top), y = v >= 0 ? mid - h : mid;
       return `<rect x="${(i * bw + 5).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 10).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="4" fill="${v >= 0 ? "var(--up)" : "var(--down)"}" opacity="${x.decile === 10 ? 1 : 0.6}"/><text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 22}" fill="var(--muted)" font-size="11" text-anchor="middle">${x.decile}</text>`; }).join("")}
     <text x="0" y="${H - 4}" fill="var(--muted)" font-size="11">χειρότερες προβλέψεις</text><text x="${W}" y="${H - 4}" fill="var(--muted)" font-size="11" text-anchor="end">καλύτερες</text></svg>`;
+}
+// Η εκπαίδευση γίνεται μόνη της: κάθε βράδυ νέες προβλέψεις, κάθε εβδομάδα νέα εκπαίδευση
+function autoTrainCard(d) {
+  if (!d) return "";
+  const days = d.stats?.retrainDays || 7;
+  const last = [...Object.values(d.model || {}).map((m) => m.createdAt), ...Object.values(d.model4?.models || {}).map((m) => m.createdAt)].filter(Boolean).sort();
+  const oldest = last[0], newest = last[last.length - 1], next = oldest ? new Date(Date.parse(oldest) + days * 864e5) : null;
+  return card(`<h3>Μαθαίνει μόνο του</h3><ul class="list"><li><span>Κάθε βράδυ, μετά το κλείσιμο, νέες προβλέψεις για όλες τις μετοχές με τα τελευταία δεδομένα.</span></li>
+    <li><span>Κάθε ${days} ημέρες νέα εκπαίδευση από την αρχή: το παλιό μοντέλο, το νέο v4 και όλες οι παραλλαγές του, στις ίδιες περιόδους. Κρατιέται αυτόματα το καλύτερο.</span></li>
+    <li><span>Κάθε πρόταση παρακολουθείται μέχρι να κλείσει, ώστε να φαίνεται πώς πήγε στην πράξη.</span></li></ul>
+    ${kv([["Τελευταία εκπαίδευση", newest ? dt(newest) : "—"], ["Επόμενη αυτόματη", next ? dday(next.toISOString().slice(0, 10)) : "στην επόμενη ανάλυση"]])}`);
 }
 // Νέο μοντέλο v4: μετρήθηκε στις ΙΔΙΕΣ περιόδους με το v3, ώστε το «πριν / μετά» να είναι πραγματικό
 function model4Section(d) {
@@ -574,6 +581,7 @@ routes.model = async () => {
     ${card(`<p style="margin:0" class="soft"><b>Τι κάνει.</b> Κατάταξη (ποιες θα πάνε καλύτερα σε 5 ή 21 ημέρες) και στόχος πριν το stop (day trade, 5 ημέρες, swing). Κοιτάζει ${st.features || 173} στοιχεία ανά μετοχή: τιμές, όγκους, μεταβλητότητα, σύγκριση με αγορά και κλάδο, οικονομικά, ημερομηνίες αποτελεσμάτων.<br><br><b>Πώς ελέγχεται.</b> Μαθαίνει μόνο από το παρελθόν και δοκιμάζεται σε περίοδο που δεν έχει δει. Χρησιμοποιείται μόνο αν περάσει όλα τα κριτήρια.</p>`)}
     ${d ? `<div class="grid2">${[["Ιστορικό", `${d.historyYears || "—"} χρόνια`, `${dday(d.firstDate)} – ${dday(d.asOf)}`], ["Μετοχές", fmt(d.histTickers, 0), `${big(st.rawBars)} τιμές`], ["Στοιχεία εκπαίδευσης", big(st.values), `σε ${fmt(st.seconds, 0)} δευτ.`], ["Ταχύτητα", isNum(st.perSec) ? (st.perSec / 1e6).toFixed(1) + " εκ./δ" : "—", esc(st.engine || "")]]
       .map(([n, v, s]) => `<div class="tile"><div class="t-name">${n}</div><div class="t-val num">${v}</div><div class="small muted">${s}</div></div>`).join("")}</div>` : freshness()}
+    ${autoTrainCard(d)}
     ${model4Section(d)}
     ${sec("Μοντέλο v3 (σημερινό)")}
     ${["rank21", "rank5", "swing", "short", "day"].filter((k) => M[k]).map((k) => { const m = M[k], rank = m.kind === "rank";
@@ -652,7 +660,7 @@ function toggleTheme() { const t = document.documentElement.dataset.theme === "d
 async function boot() {
   document.documentElement.dataset.theme = store.get("theme", "dark");
   $('meta[name="theme-color"]')?.setAttribute("content", store.get("theme", "dark") === "dark" ? "#0b0c10" : "#f3f4f7");
-  $("#tabbar").innerHTML = [["home", "Αρχική", "home"], ["day", "Day trade", "bolt"], ["signals", "Ευκαιρίες", "target"], ["scan", "Scanner", "filter"], ["watch", "Λίστα", "star"]]
+  $("#tabbar").innerHTML = [["home", "Αρχική", "home"], ["day", "Day trade", "bolt"], ["signals", "Ευκαιρίες", "target"], ["pf", "Χαρτοφυλάκιο", "wallet"], ["scan", "Scanner", "filter"], ["watch", "Λίστα", "star"]]
     .map(([r, l, i]) => `<a href="#/${r}" data-r="${r}">${icon(i)}<span>${l}</span></a>`).join("");
   $("#searchIco").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS.search}</svg>`;
   $("#themeBtn").innerHTML = icon("theme"); $("#botFab").innerHTML = `${icon("chat")}Βοηθός`;

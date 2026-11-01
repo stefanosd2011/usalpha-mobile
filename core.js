@@ -211,7 +211,19 @@ const AI = {
     if (Keys.claude) { try { return await this.claude(system, prompt); } catch (e) { if (!Keys.gemini) throw e; } }
     return this.gemini(system, prompt);
   },
-  async gemini(system, prompt) {
+  // ανάγνωση εικόνας (π.χ. screenshot χαρτοφυλακίου): κλειδί της συσκευής, αλλιώς το AI του προγράμματος στον υπολογιστή
+  async vision(system, prompt, image) {
+    const errs = [];
+    if (Keys.claude) { try { return await this.claude(system, prompt, image); } catch (e) { errs.push(e.message); } }
+    if (Keys.gemini) { try { return await this.gemini(system, prompt, image); } catch (e) { errs.push(e.message); } }
+    if (Data.server) {
+      try { const r = await fetch("api/vision", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ system, prompt, image: image.b64, mime: image.mime }) });
+        const j = await r.json(); if (r.ok && j.text) return j.text; errs.push(j.detail || j.error || "AI προγράμματος " + r.status); } catch (e) { errs.push(e.message); }
+    }
+    throw new Error(errs.length ? errs.join(" · ") : "Δεν υπάρχει κλειδί AI");
+  },
+  canVision() { return !!(Keys.claude || Keys.gemini || Data.server); },
+  async gemini(system, prompt, image = null) {
     let model = store.get("ai.geminiModel", "");
     if (!model) {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(Keys.gemini)}&pageSize=200`);
@@ -226,16 +238,18 @@ const AI = {
     }
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(Keys.gemini)}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 1200 } }) });
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }, ...(image ? [{ inline_data: { mime_type: image.mime, data: image.b64 } }] : [])] }],
+        generationConfig: { temperature: image ? 0 : 0.3, maxOutputTokens: image ? 3000 : 1200, ...(image ? { responseMimeType: "application/json" } : {}) } }) });
     if (r.status === 404) { store.set("ai.geminiModel", ""); throw new Error("Το μοντέλο Gemini άλλαξε, δοκίμασε ξανά"); }
     if (!r.ok) throw new Error("Gemini " + r.status);
     const j = await r.json();
     return (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("").trim();
   },
-  async claude(system, prompt) {
+  async claude(system, prompt, image = null) {
+    const content = image ? [{ type: "image", source: { type: "base64", media_type: image.mime, data: image.b64 } }, { type: "text", text: prompt }] : prompt;
     const call = (model) => fetch("https://api.anthropic.com/v1/messages", { method: "POST",
       headers: { "content-type": "application/json", "x-api-key": Keys.claude, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model, max_tokens: 1200, system, messages: [{ role: "user", content: prompt }] }) });
+      body: JSON.stringify({ model, max_tokens: image ? 3000 : 1200, system, messages: [{ role: "user", content }] }) });
     let model = store.get("ai.claudeModel", "claude-haiku-5-5");
     let r = await call(model);
     if (r.status === 404) {

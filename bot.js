@@ -107,6 +107,7 @@ function helpText() {
 • **Θέση:** «Πόσες NVDA να πάρω με 2000€;»
 • **Αγορά και κλάδοι:** «Τι κάνει η αγορά;», «Πώς πάει η ενέργεια;»
 • **Οι προβλέψεις μου:** «Τι λένε οι προβλέψεις μου;»
+• **Χαρτοφυλάκιο και στόχος:** «Πώς πάει το χαρτοφυλάκιό μου;», «Ο στόχος μου είναι ρεαλιστικός;»
 • **Όροι:** «Τι είναι το RSI;», «Τι είναι stop;»${AI.enabled() || Data.serverAI ? "\n\nΤο AI είναι ενεργό, οπότε μπορούμε να συζητάμε και ελεύθερα." : ""}`;
 }
 function marketText() {
@@ -296,6 +297,8 @@ async function answer(text) {
   if (/επεσαν|χαμεν|losers|μεγαλυτερ.*πτωσ|πτωσεις/.test(p)) return moversText("down");
   if (/ογκο|volume/.test(p)) return moversText("vol");
   if (/προβλεψεις μου|τις εταιρειες μου|my predictions/.test(p)) return myText();
+  if (/χαρτοφυλακ|portfolio|τις θεσεις μου|πως παει το πορτοφολ/.test(p)) return pfText();
+  if (/στοχο|στοχος|διπλασιασ|να τα κανω|να φτασω/.test(p)) return goalText();
   if (/λιστα μου|watchlist|τις μετοχες μου/.test(p)) return watchText();
   if (/μοντελ|προβλεψ|\bml\b|αλγοριθμ/.test(p)) return modelText();
   const cx = CATRX.find(([rx]) => rx.test(p)); if (cx) return catText(cx[1]);
@@ -317,6 +320,9 @@ function aiContext(tk) {
     models_validated: Object.fromEntries(Object.entries(d?.model || {}).map(([k, m]) => [k, !!m.validated])),
     model_v4: Object.fromEntries(Object.entries(d?.model4?.models || {}).map(([k, m]) => [k, { active: !!m.active, better_than_v3: !!m.better }])),
     ai_market_note: Data.ai?.market || null, my_companies: myList().slice(0, 15),
+    portfolio: PF.list.length ? (() => { const q = pfCalc(); return { value_usd: Math.round(q.val), pl_pct: q.plPct, score: q.score, daily_move_pct: q.sd * 100,
+      holdings: q.hs.map((h) => ({ ticker: h.t, shares: h.sh, buy_price: h.px, pl_pct: h.plPct, weight: h.w, system_view: pfAdvice(h).head })) }; })() : null,
+    goal: PF.goal ? { ...PF.goal, required_annual_return: needAnnual(PF.goal.start, PF.goal.target, PF.goal.months, PF.goal.monthly || 0) } : null,
     stock: a ? { ticker: a.ticker, name: a.name, sector: a.sector, price: a.q?.price ?? a.price, change_pct: a.chg, score: a.sc.score, bias: a.sc.bias, metrics: a.tech.m, flags: a.tech.flags,
       plain_summary: a.simple, risks: a.risk?.warnings, setups: a.acc.map((s) => ({ horizon: s.horizon, setup: s.setup, entry: [s.entry_low, s.entry_high], stop: s.stop, targets: [s.tp1, s.tp2, s.tp3] })),
       fundamentals: a.fund?.m, news: (a.news?.items || []).slice(0, 6).map((n) => ({ date: (n.at || "").slice(0, 10), title: n.title, source: n.source })),
