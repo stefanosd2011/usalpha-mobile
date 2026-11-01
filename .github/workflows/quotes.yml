@@ -45,7 +45,7 @@ jobs:
           pip install --disable-pip-version-check -q "yfinance>=0.2.54" pandas
           mkdir -p _site/data
           python eng/tools/quotes_mobile.py _site ${{ github.event_name != 'schedule' && '--force' || '' }}
-          cp index.html app.css core.js ui.js sw.js manifest.webmanifest *.png _site/
+          cp index.html app.css *.js manifest.webmanifest *.png _site/
           touch _site/.nojekyll
 
       - if: steps.q.outputs.deploy == 'true'
