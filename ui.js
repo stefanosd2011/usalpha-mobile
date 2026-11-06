@@ -720,7 +720,7 @@ async function boot() {
   if (!cached) router();
   else if (Data.snap?.builtAt !== before || Data.server) { Data.shards.clear(); router({ soft: true }); }
   refreshQuotes().then(() => { if (Object.keys(App.quotes).length && ["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); });
-  setInterval(() => { if (document.visibilityState === "visible") refreshQuotes().then(() => { if (["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); }); }, (Data.server ? 1 : 5) * 60000);
+  setInterval(() => { if (document.visibilityState === "visible") refreshQuotes().then(() => { if (["home", "watch", "signals", "day"].includes(App.route)) router({ soft: true }); }); }, (Data.server ? 1 : 2) * 60000);
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible") return;
     renderSession();

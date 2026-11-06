@@ -12,7 +12,7 @@ const PF = {
   get goal() { return store.get("goal", null); },
   set goal(g) { store.set("goal", g); },
 };
-const fxRate = () => (isNum(D()?.fx?.eurusd) && D().fx.eurusd > 0.5 ? D().fx.eurusd : null); // δολάρια ανά 1 ευρώ
+const fxRate = () => { const lq = App.quotes?.["EURUSD=X"]?.price; if (isNum(lq) && lq > 0.5 && lq < 2) return lq; return isNum(D()?.fx?.eurusd) && D().fx.eurusd > 0.5 ? D().fx.eurusd : null; }; // δολάρια ανά 1 ευρώ (ζωντανά αν υπάρχουν)
 const toEur = (usd) => (isNum(usd) && fxRate() ? usd / fxRate() : null);
 const toUsd = (eur) => (isNum(eur) && fxRate() ? eur * fxRate() : null);
 const rnd = (v, d) => Math.round(v * 10 ** d) / 10 ** d || 0; // χωρίς «−0»

@@ -117,13 +117,27 @@ const Data = {
   },
   aiFor(t) { return this.ai?.stocks?.[String(t || "").toUpperCase()] || null; },
   row(t) { return this.byT?.get(t) || null; },
-  // τιμές μέσα στη μέρα (κάθε 30′ από το cloud, χωρίς κωδικό)
+  // τιμές μέσα στη μέρα (από το cloud, χωρίς κωδικό)
   quotesAt: 0,
+  // ζωντανές τιμές: το GitHub τις γράφει κάθε ~2,5′ στον κλάδο "live" (όσο είναι ανοιχτή η αγορά)
+  liveURL() {
+    const h = location.hostname, m = h.match(/^([^.]+)\.github\.io$/i);
+    if (!m) return null;
+    const repo = location.pathname.split("/").filter(Boolean)[0];
+    return repo ? `https://raw.githubusercontent.com/${m[1]}/${repo}/live/quotes.json` : null;
+  },
+  async fetchQuotes() {
+    const get = async (u, opt) => { try { const r = await fetch(u, opt); return r.ok ? await r.json() : null; } catch { return null; } };
+    const live = this.liveURL();
+    const [a, b] = await Promise.all([live ? get(`${live}?t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" }) : null, get("data/quotes.json", { cache: "no-cache" })]);
+    const ok = (j) => j && j.day && j.q && Date.parse(j.at);
+    if (ok(a) && ok(b)) return Date.parse(a.at) >= Date.parse(b.at) ? a : b;
+    return ok(a) ? a : ok(b) ? b : null;
+  },
   async loadQuotes() {
     try {
-      const r = await fetch("data/quotes.json", { cache: "no-cache" });
-      if (!r.ok) return 0;
-      const j = await r.json();
+      const j = await this.fetchQuotes();
+      if (!j) return 0;
       if (!this.snap || !j.day || j.day <= (this.snap.asOf || "")) return 0;
       const ts = Date.parse(j.at); this.quotesAt = ts;
       for (const [t, [p, c]] of Object.entries(j.q || {})) if (!App.quotes[t] || App.quotes[t].src === "cloud") App.quotes[t] = { price: p, chg: c, ts, src: "cloud" };

@@ -1,5 +1,5 @@
 /* Service worker: η εφαρμογή ανοίγει και χωρίς σύνδεση, με την τελευταία ανάλυση που είχε φορτώσει. */
-const VERSION = "uam-v11";
+const VERSION = "uam-v12";
 const SHELL = ["./", "index.html", "app.css", "core.js", "ui.js", "pf.js", "ocr.js", "plan.js", "brief.js", "bot.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 const CDN = /^https:\/\/(unpkg\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net\/npm\/tesseract)\//;
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((x) => new Request(x, { cache: "reload" })))).then(() => self.skipWaiting())); });
