@@ -313,7 +313,7 @@ routes.s = async (ticker) => {
   a.q = q; App.last = a;
   const price = q?.price ?? a.price, chg = q?.chg ?? a.chg, inW = App.watch.includes(ticker);
   const head = `<section class="card"><div class="stock-top">${logo(ticker, true)}<div style="min-width:0"><h1>${esc(ticker)}</h1><div class="nm">${esc(a.name || (a.index ? "Δείκτης / ETF" : ""))}${a.sector ? ` · ${esc(a.sector)}` : ""}</div></div></div>
-    <div class="price-big num">${money(price)}</div><div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">${chgPill(chg)}${qChip(q, a.asOf)}${a.sc ? biasChip(a.sc.bias) : ""}
+    <div class="price-big num" id="sPx">${money(price)}</div><div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span id="sPxMeta" style="display:contents">${chgPill(chg)}${qChip(q, a.asOf)}</span>${a.sc ? biasChip(a.sc.bias) : ""}
       ${a.index ? "" : `<button class="chip-btn ${inMy(ticker) ? "on" : ""}" id="myBtn" aria-pressed="${inMy(ticker)}">${icon("star")}${inMy(ticker) ? "Στις προβλέψεις μου" : "Πρόσθεσε στις προβλέψεις μου"}</button>`}</div>
     ${a.index ? "" : `<div class="actions" style="margin-top:16px"><button class="act" data-ask="${esc(ticker)}"><span class="c pri">${icon("chat")}</span>Εξήγησέ μου</button><button class="act" id="wBtn"><span class="c">${icon("star")}</span>${inW ? "Στη λίστα" : "Λίστα"}</button>
       <button class="act" data-q="Ποια τα ρίσκα της ${esc(ticker)};"><span class="c">${icon("shield")}</span>Ρίσκα</button><button class="act" data-q="Πού να βάλω stop στην ${esc(ticker)};"><span class="c">${icon("target")}</span>Stop</button></div>`}</section>`;
@@ -670,9 +670,23 @@ async function openSearch(onPick = null) {
 // ================================================================== ζωντανές τιμές
 async function refreshQuotes() {
   await Data.loadQuotes();
+  livePx();
   if (!Keys.finnhub) return;
   const d = D(), list = [...new Set([...App.watch, ...(d?.signals || []).slice(0, 12).map((s) => s.ticker), "SPY", "QQQ", "DIA", "IWM"])];
   Object.assign(App.quotes, await quotes(list));
+  livePx();
+}
+// σελίδα μετοχής ανοιχτή: η τιμή ενημερώνεται μόνη της όταν έρχονται νέες τιμές (χωρίς να ξαναφορτώνει η σελίδα)
+function livePx() {
+  try {
+    const a = App.last, t = a?.ticker;
+    if (App.route !== "s" || !t) return;
+    const q = App.quotes[t], px = $("#sPx"), m = $("#sPxMeta");
+    if (!q || !px || !m || !location.hash.toUpperCase().includes(encodeURIComponent(t).toUpperCase())) return;
+    a.q = q;
+    px.innerHTML = money(q.price ?? a.price);
+    m.innerHTML = chgPill(q.chg ?? a.chg) + qChip(q, a.asOf);
+  } catch { /* η σελίδα άλλαξε στο μεταξύ */ }
 }
 
 // ================================================================== αυτόματη ενημέρωση εφαρμογής
