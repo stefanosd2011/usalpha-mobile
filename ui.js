@@ -643,6 +643,7 @@ routes.guide = async () => {
 
 // ================================================================== αναζήτηση
 async function openSearch(onPick = null) {
+  if (typeof onPick !== "function") onPick = null; // από το κουμπί αναζήτησης έρχεται το click event, όχι συνάρτηση
   const rows = D()?.rows || [];
   const sh = document.createElement("div"); sh.className = "sheet"; sh.setAttribute("role", "dialog");
   sh.innerHTML = `<div class="sheet-head"><input class="input" id="sIn" placeholder="${onPick ? "Ποια εταιρεία θέλεις στις προβλέψεις;" : "Σύμβολο ή εταιρεία (π.χ. AEHR)"}" autocomplete="off" autocapitalize="characters" spellcheck="false" style="border-radius:999px"><button class="round-btn" id="sX" aria-label="Κλείσιμο">${icon("x")}</button></div><div class="results" id="sRes"></div>`;
@@ -656,7 +657,7 @@ async function openSearch(onPick = null) {
       hits.sort((a, b) => b[1] - a[1] || (b[0].dv || 0) - (a[0].dv || 0)); hits = hits.slice(0, 30).map((h) => h[0]);
       if (/^[A-Z^][A-Z0-9.\-]{0,9}$/.test(Q) && !hits.some((h) => h.t === Q)) hits.push({ t: Q, n: "Δοκίμασε αυτό το σύμβολο" }); }
     else hits = [...new Set([...store.get("recent", []), ...App.watch])].slice(0, 14).map((t) => Data.row(t) || { t, n: "" });
-    $("#sRes", sh).innerHTML = hits.map((r) => `<a href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<span style="min-width:0"><b>${esc(r.t)}</b><span class="nm">${esc(r.n || "")}</span></span><span class="num">${isNum(r.p) ? fmt(r.p) : ""}</span></a>`).join("") || `<div class="empty">Τίποτα δεν ταιριάζει</div>`;
+    $("#sRes", sh).innerHTML = hits.map((r) => `<a href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<span style="min-width:0"><b>${esc(r.t)}</b><span class="nm">${esc(r.n || "")}</span></span><span class="num">${isNum(curPx(r.t, r.p)) ? fmt(curPx(r.t, r.p)) : ""}</span></a>`).join("") || `<div class="empty">Τίποτα δεν ταιριάζει</div>`;
   };
   $("#sRes", sh).addEventListener("click", (e) => { const a = e.target.closest("a"); if (!a) return;
     const t = decodeURIComponent(a.getAttribute("href").replace("#/s/", "")); store.set("recent", [t, ...store.get("recent", []).filter((x) => x !== t)].slice(0, 8));
@@ -705,7 +706,7 @@ async function boot() {
     .map(([r, l, i]) => `<a href="#/${r}" data-r="${r}">${icon(i)}<span>${l}</span></a>`).join("");
   $("#searchIco").innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONS.search}</svg>`;
   $("#themeBtn").innerHTML = icon("theme"); $("#botFab").innerHTML = `${icon("chat")}Βοηθός`;
-  $("#searchBtn").addEventListener("click", openSearch); $("#themeBtn").addEventListener("click", toggleTheme); $("#meBtn").addEventListener("click", () => { location.hash = "#/more"; });
+  $("#searchBtn").addEventListener("click", () => openSearch()); $("#themeBtn").addEventListener("click", toggleTheme); $("#meBtn").addEventListener("click", () => { location.hash = "#/more"; });
   $("#botFab").addEventListener("click", () => { const m = location.hash.match(/#\/s\/([^/]+)/); openBot(m ? decodeURIComponent(m[1]).toUpperCase() : bot.ticker); });
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-ask]"); if (!b) return; e.preventDefault(); if (b.dataset.ask === "__watch") { openBot(null); botAsk("Τι κάνει η λίστα μου;"); return; } openBot(b.dataset.ask); botAsk(`Εξήγησέ μου την ${b.dataset.ask}`); });
   renderSession(); setInterval(renderSession, 20000);
