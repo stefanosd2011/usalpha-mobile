@@ -42,7 +42,7 @@ jobs:
           PYTHONWARNINGS: "ignore"
         run: |
           mkdir -p eng && tar -xzf engine.tgz -C eng
-          pip install --disable-pip-version-check -q "yfinance>=0.2.54" pandas
+          pip install --disable-pip-version-check -q "yfinance==1.7.0" pandas
           mkdir -p _site/data
           python eng/tools/quotes_mobile.py _site ${{ github.event_name != 'schedule' && '--force' || '' }}
           cp index.html app.css *.js manifest.webmanifest *.png _site/

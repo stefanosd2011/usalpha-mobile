@@ -55,6 +55,9 @@ jobs:
           PYTHONUNBUFFERED: "1"
           PYTHONWARNINGS: "ignore"
           ML4_TARGET_ROWS: "1600000"
+          # τιμές: μόνο ολοκληρωμένες συνεδριάσεις, και όσες μετοχές έμειναν πίσω ξανακατεβαίνουν
+          USALPHA_DROP_PARTIAL: "1"
+          USALPHA_FRESH_REPAIR: "1"
           # κρυφό κλειδί AI (Settings → Secrets → Actions). Δεν εμφανίζεται ποτέ σε logs ή στη σελίδα.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

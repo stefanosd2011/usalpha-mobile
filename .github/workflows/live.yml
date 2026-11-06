@@ -1,0 +1,44 @@
+# Ζωντανές τιμές όλη τη συνεδρίαση ΗΠΑ, χωρίς κωδικούς: κάθε ~2,5 λεπτά οι τρέχουσες τιμές όλων των μετοχών
+# γράφονται στο quotes.json του κλάδου "live" και η εφαρμογή τις διαβάζει από εκεί (χωρίς νέα δημοσίευση σελίδας).
+# Πολλά σημεία εκκίνησης επειδή το GitHub συχνά καθυστερεί ή παραλείπει τα προγραμματισμένα runs·
+# αν τρέχει ήδη ένα, το επόμενο περιμένει και συνεχίζει όταν εκείνο τελειώσει (όριο 6 ωρών ανά run).
+name: Ζωντανές τιμές
+
+on:
+  schedule:
+    - cron: "11 13 * * 1-5"
+    - cron: "43 14 * * 1-5"
+    - cron: "17 16 * * 1-5"
+    - cron: "49 17 * * 1-5"
+    - cron: "23 19 * * 1-5"
+    - cron: "37 20 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-quotes
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Τιμές όσο είναι ανοιχτή η αγορά
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PYTHONWARNINGS: "ignore"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          mkdir -p eng && tar -xzf engine.tgz -C eng
+          pip install --disable-pip-version-check -q "yfinance==1.7.0" pandas httpx tzdata python-dotenv
+          python eng/tools/live_quotes.py --minutes 340 --every 150
