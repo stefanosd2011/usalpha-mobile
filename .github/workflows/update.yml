@@ -1,12 +1,23 @@
-# Κάθε βράδυ (Δευτ.–Παρ.) μετά το κλείσιμο της αγοράς ΗΠΑ: πλήρης ανάλυση όλης της αγοράς με τον
-# αλγόριθμο του US Alpha (engine.tgz) και δημοσίευση της εφαρμογής + αποτελεσμάτων στο GitHub Pages.
-# Χωρίς API keys. Τα δεδομένα (10 χρόνια τιμές, SEC, μοντέλα) μένουν στο cache για την επόμενη μέρα.
+# Μετά από κάθε συνεδρίαση της αγοράς ΗΠΑ: πλήρης ανάλυση όλης της αγοράς με τον αλγόριθμο του US Alpha
+# (engine.tgz) και δημοσίευση της εφαρμογής + αποτελεσμάτων στο GitHub Pages. Χωρίς API keys.
+# Τρέχει τα ξημερώματα ώρας Ν. Υόρκης (Τρ.–Σάβ.), όταν το Yahoo έχει ολοκληρώσει τις τιμές της μέρας:
+# αμέσως μετά το κλείσιμο η τελευταία μέρα έρχεται συχνά μισή για τις περισσότερες μετοχές.
+# Σάββατο και Κυριακή: «βαθιά εκπαίδευση» — ξανά εκπαίδευση όλων των μοντέλων και πολύ περισσότερες δοκιμές
+# στην αυτόματη αναζήτηση (το μοντέλο εκπαιδεύεται μόνο του· αλλάζει μόνο αν βρεθεί κάτι αποδεδειγμένα καλύτερο).
+# Τα δεδομένα (10 χρόνια τιμές, SEC, μοντέλα) μένουν στο cache για την επόμενη φορά.
 name: Καθημερινή ανάλυση αγοράς
 
 on:
   schedule:
-    - cron: "41 21 * * 1-5"
+    - cron: "47 6 * * 2-6"
+    - cron: "13 11 * * 6"
+    - cron: "29 8 * * 0"
   workflow_dispatch:
+    inputs:
+      deep:
+        description: "Βαθιά εκπαίδευση (πολλές περισσότερες δοκιμές μοντέλων)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["engine.tgz", ".github/workflows/**", "*.html", "*.js", "*.css", "manifest.webmanifest"]
@@ -42,6 +53,16 @@ jobs:
           path: eng/data
           key: usalpha-data-v1-${{ github.run_id }}
           restore-keys: usalpha-data-v1-
+
+      - name: Βαθιά εκπαίδευση (Σαββατοκύριακο)
+        if: github.event.schedule == '13 11 * * 6' || github.event.schedule == '29 8 * * 0' || inputs.deep == true
+        run: |
+          echo "ML_RETRAIN_DAYS=0.01" >> "$GITHUB_ENV"
+          echo "ML4_AUTO_TRIES=6" >> "$GITHUB_ENV"
+          echo "ML4_AUTO_MAX_TRIES=24" >> "$GITHUB_ENV"
+          echo "ML4_AUTO_BUDGET_MIN=200" >> "$GITHUB_ENV"
+          echo "ML4_AUTO_CFG_SEC=900" >> "$GITHUB_ENV"
+          echo "Βαθιά εκπαίδευση: όλα τα μοντέλα από την αρχή + έως 24 νέοι συνδυασμοί ανά ορίζοντα"
 
       - name: Ανάλυση όλης της αγοράς
         working-directory: eng
