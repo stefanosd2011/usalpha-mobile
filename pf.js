@@ -109,7 +109,8 @@ function goalBar(g, nowEur) {
 }
 const goalPeriod = (m) => (m < 12 ? `${m} μήνες` : m === 12 ? "1 χρόνο" : `${(m / 12).toLocaleString("el-GR", { maximumFractionDigits: 1 })} χρόνια`);
 
-routes.pf = async () => {
+// η προηγούμενη (κλασική) προβολή μένει διαθέσιμη: #/pfc
+routes.pfc = async () => {
   const d = D();
   if (!d) { $("#view").innerHTML = `<div class="stack">${freshness()}</div>`; return; }
   const p = pfCalc(), hs = p.hs;
@@ -419,3 +420,241 @@ function pfImport() {
   };
   document.body.appendChild(sh); render();
 }
+
+// ================================================================== Χαρτοφυλάκιο σε στυλ Revolut
+// Μεγάλο σύνολο με την πορεία του, κουμπιά-ενέργειες, οι μετοχές μία-μία (αξία, κέρδος/ζημιά, πόσες έχεις),
+// λεπτομέρειες με ένα πάτημα, αφαίρεση με σύρσιμο αριστερά / «Επεξεργασία» / από τις λεπτομέρειες (με αναίρεση).
+// Μόνο πραγματικές τιμές της ανάλυσης και οι ζωντανές τιμές· τίποτα δεν αποθηκεύεται εκτός συσκευής.
+const RV = { range: store.get("pfRange", 63), edit: false, mov: store.get("pfMov", "up"), hist: null, histKey: "" };
+const RANGES = [[5, "1Ε"], [21, "1Μ"], [63, "3Μ"], [126, "6Μ"], [252, "1Χ"]];
+const mEur = (usdV, d = 2) => (fxRate() ? eur(toEur(usdV), d) : usd(usdV, d)); // ποσό σε € (ή $ αν λείπει η ισοτιμία)
+function bigMoney(usdV) {
+  const v = fxRate() ? toEur(usdV) : usdV;
+  if (!isNum(v)) return "—";
+  const s = Math.abs(v).toLocaleString(fxRate() ? "el-GR" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sep = fxRate() ? "," : ".", i = s.lastIndexOf(sep);
+  return `${v < 0 ? "−" : ""}${fxRate() ? "" : "$"}${s.slice(0, i)}<small>${s.slice(i)}${fxRate() ? " €" : ""}</small>`;
+}
+const arrowPct = (v, d = 2) => (isNum(v) ? `<span class="num ${cls(v)}">${v > 0 ? "▲" : v < 0 ? "▼" : ""} ${Math.abs(v).toFixed(d).replace(".", ",")}%</span>` : "");
+const signedMoney = (usdV, d = 2) => (isNum(usdV) ? `${usdV > 0 ? "+" : ""}${mEur(usdV, d)}` : "—");
+const qtyTxt = (x) => (isNum(x) ? x.toLocaleString("el-GR", { maximumFractionDigits: x < 1 ? 4 : x < 100 ? 3 : 0 }) : "—");
+
+// πορεία της αξίας με τις σημερινές ποσότητες (ημερήσια κλεισίματα της ανάλυσης + η ζωντανή τιμή τώρα)
+async function pfHistory(p) {
+  const key = p.hs.map((h) => `${h.t}:${h.sh}`).join("|") + "|" + (D()?.asOf || "");
+  if (RV.hist && RV.histKey === key) return RV.hist;
+  const shards = await Promise.all(p.hs.map((h) => Data.stock(h.t).catch(() => null)));
+  const inc = [];
+  p.hs.forEach((h, i) => { const b = shards[i]?.bars; if (b?.d?.length && b?.c?.length) inc.push({ h, m: new Map(b.d.map((d, k) => [String(d), b.c[k]])) }); });
+  let pts = [];
+  if (inc.length) {
+    const dates = [...new Set(inc.flatMap((x) => [...x.m.keys()]))].sort();
+    for (const d of dates) { let v = 0, ok = true; for (const x of inc) { const c = x.m.get(d); if (!isNum(c)) { ok = false; break; } v += x.h.sh * c; } if (ok) pts.push([d, v]); }
+  }
+  RV.hist = { pts, inc: inc.map((x) => x.h.t), all: p.hs.length };
+  RV.histKey = key;
+  return RV.hist;
+}
+function pfLivePoint(p, hist) {
+  if (!hist?.pts?.length || !Data.quotesAt) return null;
+  const q = Object.values(App.quotes).find((x) => x?.src === "cloud");
+  const day = Data.quotesDay || (q ? new Date(q.ts).toISOString().slice(0, 10) : null);
+  const last = hist.pts[hist.pts.length - 1][0];
+  if (!day || day <= last) return null;
+  const v = p.hs.filter((h) => hist.inc.includes(h.t)).reduce((s, h) => s + (isNum(h.value) ? h.value : 0), 0);
+  return v > 0 ? [day, v] : null;
+}
+function rvChart(pts) {
+  const W = 360, H = 150, a = pts.map((x) => x[1]);
+  if (a.length < 2) return `<div class="rv-chart empty small muted">Δεν υπάρχει ακόμα αρκετό ιστορικό για γράφημα</div>`;
+  const mn = Math.min(...a), mx = Math.max(...a), rg = mx - mn || 1;
+  const xy = a.map((v, i) => [(i / (a.length - 1)) * W, H - 10 - ((v - mn) / rg) * (H - 24)]);
+  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+  const up = a[a.length - 1] >= a[0];
+  return `<div class="rv-chart" data-up="${up ? 1 : 0}"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="rvg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".28"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>
+    <path d="${d}L${W} ${H}L0 ${H}Z" fill="url(#rvg)"/><path d="${d}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
+    <i class="rv-cur" hidden></i><i class="rv-dot" hidden></i></div>`;
+}
+
+function rvRow(h) {
+  const nm = h.r?.n || h.t;
+  return `<div class="rv-item" data-id="${esc(h.id)}"><button class="rv-del" data-del="${esc(h.id)}" aria-label="Αφαίρεση ${esc(h.t)}">${icon("trash")}<span>Αφαίρεση</span></button>
+    <div class="rv-row" data-open="${esc(h.id)}" role="button" tabindex="0">
+      <button class="rv-minus" data-minus="${esc(h.id)}" aria-label="Αφαίρεση ${esc(h.t)}">−</button>${logo(h.t, true)}
+      <div class="rv-mid"><b>${esc(nm)}</b><span>${qtyTxt(h.sh)} ${esc(h.t)} · ${isNum(h.price) ? "$" + fmt(h.price) : "—"}</span></div>
+      <div class="rv-right"><b class="num">${mEur(h.value)}</b>${arrowPct(h.plPct)}</div></div></div>`;
+}
+
+function rvMovers() {
+  const d = D(); if (!d?.rows?.length) return "";
+  const live = !!Data.quotesAt;
+  const list = d.rows.filter((r) => (r.dv || 0) >= 20e6 && isNum(curPx(r.t, r.p)) && curPx(r.t, r.p) >= 2)
+    .map((r) => ({ t: r.t, n: r.n, c: curCh(r.t, r.ch) })).filter((x) => isNum(x.c));
+  const pick = RV.mov === "up" ? [...list].sort((a, b) => b.c - a.c).slice(0, 8) : [...list].sort((a, b) => a.c - b.c).slice(0, 8);
+  return card(`<div class="rv-sec"><b>${live ? "Οι μεγαλύτερες κινήσεις σήμερα" : "Οι μεγαλύτερες κινήσεις (τελευταία συνεδρίαση)"}</b></div>
+    ${seg([["up", "Άνοδος"], ["down", "Πτώση"]], RV.mov, "mov")}
+    <div class="rv-movers">${pick.map((x) => `<a href="#/s/${encodeURIComponent(x.t)}" title="${esc(x.n || x.t)}">${logo(x.t, true)}<b>${esc(x.t)}</b>${arrowPct(x.c)}</a>`).join("")}</div>
+    <div class="small muted rv-mfoot">Μετοχές με τζίρο πάνω από $20 εκ. τη μέρα. Πάτα για ανάλυση.</div>`);
+}
+
+// κάτω φύλλο (bottom sheet)
+function bottomSheet(html) {
+  const bs = document.createElement("div"); bs.className = "rv-bs"; bs.setAttribute("role", "dialog");
+  bs.innerHTML = `<div class="rv-bs-bg"></div><div class="rv-bs-panel"><i class="rv-grab"></i>${html}</div>`;
+  document.body.appendChild(bs);
+  const close = () => { bs.classList.add("out"); setTimeout(() => bs.remove(), 180); };
+  $(".rv-bs-bg", bs).addEventListener("click", close);
+  bs.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  return { el: bs, close };
+}
+function undoBar(text, onUndo) {
+  $$(".rv-undo").forEach((x) => x.remove());
+  const el = document.createElement("div"); el.className = "rv-undo";
+  el.innerHTML = `<span>${text}</span><button>Αναίρεση</button>`;
+  document.body.appendChild(el);
+  const t = setTimeout(() => el.remove(), 6000);
+  $("button", el).addEventListener("click", () => { clearTimeout(t); el.remove(); onUndo(); });
+}
+function pfRemove(id) {
+  const l = PF.list, i = l.findIndex((h) => h.id === id); if (i < 0) return;
+  const gone = l[i]; PF.save(l.filter((h) => h.id !== id)); RV.hist = null;
+  undoBar(`Η ${esc(gone.t)} αφαιρέθηκε`, () => { const now = PF.list; now.splice(Math.min(i, now.length), 0, gone); PF.save(now); RV.hist = null; router({ soft: true }); });
+  router({ soft: true });
+}
+function pfAskRemove(h) {
+  const s = bottomSheet(`<div class="rv-confirm">${logo(h.t, true)}<b>Αφαίρεση της ${esc(h.t)};</b><p class="small muted">Βγαίνει από το χαρτοφυλάκιο σε αυτή τη συσκευή (${qtyTxt(h.sh)} μετοχές). Μπορείς να την αναιρέσεις αμέσως μετά.</p>
+    <button class="btn danger block" data-yes>${icon("trash")}Αφαίρεση</button><button class="btn block" data-no>Άκυρο</button></div>`);
+  $("[data-yes]", s.el).addEventListener("click", () => { s.close(); pfRemove(h.id); });
+  $("[data-no]", s.el).addEventListener("click", s.close);
+}
+function pfDetail(id) {
+  const p = pfCalc(), h = p.hs.find((x) => x.id === id); if (!h) return;
+  const a = pfAdvice(h);
+  const s = bottomSheet(`<div class="rv-detail">
+    <div class="rv-dh">${logo(h.t, true)}<div><b>${esc(h.r?.n || h.t)}</b><span class="small muted">${esc(h.t)}${h.r?.sec ? " · " + esc(h.r.sec) : ""}</span></div><button class="round-btn" data-x aria-label="Κλείσιμο">${icon("x")}</button></div>
+    <div class="rv-dval num">${bigMoney(h.value)}</div>
+    <div class="rv-dchg">${signedMoney(h.pl)} ${arrowPct(h.plPct)} <span class="muted small">συνολικά</span></div>
+    <div class="rv-dchg">${signedMoney(h.day)} ${arrowPct(h.chg)} <span class="muted small">σήμερα</span></div>
+    ${kv([["Μετοχές", qtyTxt(h.sh)], ["Μέση τιμή αγοράς", "$" + fmt(h.px)], ["Τιμή τώρα", isNum(h.price) ? "$" + fmt(h.price) : "—"], ["Κόστος", mEur(h.cost)],
+      ["Κέρδος / ζημιά", `${signedMoney(h.pl)}`, cls(h.pl)], ["Βάρος στο χαρτοφυλάκιο", pct(h.w * 100, 1).replace("+", "")], h.d ? ["Ημερομηνία αγοράς", dday(h.d)] : null])}
+    <div class="rv-advice ${a.tone}"><b>${esc(a.head)}</b><ul>${a.lines.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+    <a class="btn primary block" href="#/s/${encodeURIComponent(h.t)}" data-go>${icon("spark")}Ανάλυση της μετοχής</a>
+    <div class="grid2"><button class="btn" data-edit>Αλλαγή</button><button class="btn danger" data-rm>${icon("trash")}Αφαίρεση</button></div>
+    <div class="small muted">Ανάλυση με τα στοιχεία του συστήματος, όχι εντολή.</div></div>`);
+  $("[data-x]", s.el).addEventListener("click", s.close);
+  $("[data-go]", s.el).addEventListener("click", s.close);
+  $("[data-edit]", s.el).addEventListener("click", () => { s.close(); pfForm(PF.list.find((x) => x.id === id)); });
+  $("[data-rm]", s.el).addEventListener("click", () => { s.close(); pfAskRemove(h); });
+}
+function pfMore() {
+  const s = bottomSheet(`<div class="rv-more"><b class="rv-mt">Περισσότερα</b>
+    <form id="rvCash" class="rv-cash"><label class="field"><b>Μετρητά στον λογαριασμό (€)</b><input class="input" name="c" inputmode="decimal" placeholder="π.χ. 9,43" value="${PF.cash || ""}"></label><button class="btn">Αποθήκευση</button></form>
+    <button class="btn block" data-exp>${icon("share")}Μεταφορά σε άλλη συσκευή</button><button class="btn block" data-imp>Εισαγωγή από άλλη συσκευή</button>
+    <a class="btn block" href="#/goal" data-go>${icon("target")}${PF.goal ? "Ο στόχος μου" : "Βάλε στόχο"}</a><a class="btn block" href="#/pfc" data-go>Κλασική προβολή χαρτοφυλακίου</a></div>`);
+  $$("[data-go]", s.el).forEach((x) => x.addEventListener("click", s.close));
+  $("#rvCash", s.el).addEventListener("submit", (e) => { e.preventDefault(); PF.cash = String(new FormData(e.target).get("c")).replace(",", "."); toast("Αποθηκεύτηκε"); s.close(); router({ soft: true }); });
+  $("[data-exp]", s.el).addEventListener("click", async () => { const code = btoa(unescape(encodeURIComponent(JSON.stringify({ pf: PF.list, cash: PF.cash, goal: PF.goal, my: myList() }))));
+    try { await navigator.clipboard.writeText(code); toast("Αντιγράφηκε. Στην άλλη συσκευή: Χαρτοφυλάκιο → Περισσότερα → Εισαγωγή → επικόλληση."); } catch { prompt("Αντίγραψε αυτόν τον κωδικό", code); } });
+  $("[data-imp]", s.el).addEventListener("click", () => { const code = prompt("Επικόλλησε τον κωδικό μεταφοράς"); if (!code) return;
+    try { const j = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+      if (Array.isArray(j.pf)) PF.save(j.pf.map((h) => ({ ...h, id: h.id || Math.random().toString(36).slice(2, 9) })));
+      if (isNum(j.cash)) PF.cash = j.cash; if (j.goal) PF.goal = j.goal; if (Array.isArray(j.my)) setMy(j.my); toast("Έγινε εισαγωγή"); s.close(); router({ soft: true }); }
+    catch { toast("Ο κωδικός δεν είναι σωστός", "high"); } });
+}
+
+routes.pf = async () => {
+  const d = D();
+  if (!d) { $("#view").innerHTML = `<div class="stack">${freshness()}</div>`; return; }
+  // παλιές θέσεις χωρίς αναγνωριστικό (π.χ. από μεταφορά): παίρνουν ένα, για να μπορούν να αλλάξουν/αφαιρεθούν
+  if (PF.list.some((h) => !h.id)) PF.save(PF.list.map((h) => ({ ...h, id: h.id || Math.random().toString(36).slice(2, 9) })));
+  const p = pfCalc(), hs = [...p.hs].sort((a, b) => (b.value || 0) - (a.value || 0));
+  const cashUsd = toUsd(PF.cash) || 0, total = p.val + cashUsd;
+  const dayPct = p.val - p.day > 0 ? (p.day / (p.val - p.day)) * 100 : null;
+  const asOfTxt = Data.quotesAt ? `Τιμές ${dt(new Date(Data.quotesAt).toISOString())}` : `Κλείσιμο ${dday(d.asOf)}`;
+  const acts = `<div class="actions rv-acts"><button class="act" id="pfAdd"><span class="c pri">${icon("plus")}</span>Προσθήκη</button>
+    <button class="act" id="pfShot"><span class="c">${icon("camera")}</span>Από φωτογραφία</button>
+    <button class="act" data-go="#/goal"><span class="c">${icon("target")}</span>Στόχος</button>
+    <button class="act" id="pfMore"><span class="c"><b style="font-size:20px;line-height:1">···</b></span>Περισσότερα</button></div>`;
+  const hero = `<div class="rv-hero"><div class="rv-lbl">Αξία χαρτοφυλακίου</div><div class="rv-val num" id="rvVal">${bigMoney(total)}</div>
+    <div class="rv-chg" id="rvChg">${hs.length ? `${signedMoney(p.day)} ${arrowPct(dayPct)} <span class="muted">σήμερα</span>` : `<span class="muted">${asOfTxt}</span>`}</div>
+    ${hs.length ? `<div class="rv-sub" id="rvSub">Σήμερα ${signedMoney(p.day)} (${pct(dayPct, 2).replace(".", ",")})</div>` : ""}
+    <div id="rvChartBox"></div>
+    <div class="rv-ranges" id="rvRanges" ${hs.length ? "" : "hidden"}>${RANGES.map(([n, l]) => `<button type="button" class="${RV.range === n ? "on" : ""}" data-rg="${n}">${l}</button>`).join("")}</div></div>`;
+  const hold = hs.length ? `<section class="card flush rv-list ${RV.edit ? "edit" : ""}" id="rvList">
+      <div class="rv-sec"><b>Μετοχές <span class="muted">${hs.length}</span></b><button class="linkbtn" id="rvEdit">${RV.edit ? "Τέλος" : "Επεξεργασία"}</button></div>
+      ${hs.map(rvRow).join("")}
+      <div class="rv-row rv-cashrow" id="rvCashRow" role="button" tabindex="0"><span class="logo lg rv-cashlogo">${icon("wallet")}</span><div class="rv-mid"><b>Μετρητά</b><span>${PF.cash ? "στον λογαριασμό" : "πάτα για να τα βάλεις"}</span></div><div class="rv-right"><b class="num">${eur(PF.cash || 0, 2)}</b></div></div>
+      <div class="rv-foot"><span>Συνολικό κέρδος/ζημιά</span><b class="num ${cls(p.pl)}">${signedMoney(p.pl)} (${pct(p.plPct, 1)})</b></div>
+      <div class="rv-hint small muted">Πάτα μια μετοχή για λεπτομέρειες · σύρε αριστερά για αφαίρεση</div></section>`
+    : card(emptyBox("Δεν έχεις βάλει ακόμα μετοχές", "Πάτα «Προσθήκη» για μία-μία ή «Από φωτογραφία» και διάλεξε screenshot από τον broker σου (π.χ. Revolut)."));
+  // ό,τι υπήρχε και πριν: βαθμολογία, πορεία μήνα, υποψήφιες
+  const bars = [["Ποιότητα μετοχών", p.quality, "Μέση βαθμολογία συστήματος, ζυγισμένη με το βάρος κάθε θέσης."], ["Τι λένε τα μοντέλα (1 μήνας)", p.model, "Πού βρίσκονται οι μετοχές σου στην κατάταξη της αγοράς."],
+    ["Διασπορά", p.diversity, `${fmt(p.neff, 1)} «πραγματικές» θέσεις, μεγαλύτερος κλάδος ${pct(p.maxSec * 100, 0).replace("+", "")}.`], ["Ήρεμο (χαμηλό ρίσκο)", p.risk, `Κινείται περίπου ±${fmt(p.sd * 100, 1)}% τη μέρα.`]];
+  const scoreC = hs.length ? card(`<div class="rv-sec" style="padding:0 0 8px"><b>Βαθμολογία χαρτοφυλακίου</b>${ring(p.score)}</div>${bars.map(([n, v, x]) => `<div class="meter"><span>${n}</span><div class="bar"><i style="width:${clamp(v ?? 0)}%;background:${(v ?? 0) >= 60 ? "var(--up)" : (v ?? 0) <= 40 ? "var(--down)" : "var(--warn)"}"></i></div><b class="num">${isNum(v) ? v.toFixed(0) : "—"}</b></div><div class="small muted" style="margin:-2px 0 8px">${x}</div>`).join("")}`) : "";
+  const vm = p.val, lo1 = vm * (Math.exp(-p.sm) - 1), hi1 = vm * (Math.exp(p.sm) - 1), bad = vm * (Math.exp(-2 * p.sm) - 1);
+  const outlook = hs.length ? card(`<h3>Πώς μπορεί να πάει τον επόμενο μήνα</h3>${kv([["Συνήθες εύρος (2 στους 3 μήνες)", `${mEur(lo1, 0)} έως +${mEur(hi1, 0).replace("−", "")}`], ["Κακός μήνας (1 στους 20)", mEur(bad, 0), "down"]])}
+    <div class="small muted" style="margin-top:8px">Από το πόσο κινούνται οι μετοχές σου (μεταβλητότητα), όχι πρόβλεψη κατεύθυνσης.</div>`) : "";
+  const capUsd = Math.max(p.val + cashUsd, toUsd(1000) || 1000);
+  const cands = pfCandidates(capUsd, store.get("goal")?.risk || "mid");
+  $("#view").innerHTML = `<div class="stack rv">${hero}${acts}${PF.goal ? `<a class="card pf-card" href="#/goal">${goalBar(PF.goal, fxRate() ? toEur(total) : total)}</a>` : ""}
+    ${hold}${rvMovers()}<div class="wide2"><div class="stack">${scoreC}</div><div class="stack">${outlook}</div></div>
+    ${sec("Τι θα μπορούσες να εξετάσεις", "", "από τη σημερινή ανάλυση")}${card(cands.length ? cands.map(candRow).join("") : emptyBox("Καμία κατάλληλη υποψήφια σήμερα", "Η αναμονή είναι κι αυτή θέση."), "flush")}
+    <div class="note">${asOfTxt}${fxRate() ? `, 1 € = ${fmt(fxRate(), 4)} $` : ""}. Οι θέσεις σου μένουν μόνο σε αυτή τη συσκευή. Ανάλυση, όχι επενδυτική συμβουλή· καμία εντολή δεν εκτελείται από την εφαρμογή.</div></div>`;
+  // ενέργειες
+  $("#pfAdd").addEventListener("click", () => pfForm());
+  $("#pfShot").addEventListener("click", () => pfImport());
+  $("#pfMore").addEventListener("click", pfMore);
+  $$(".rv-acts [data-go]").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.go; }));
+  $$("[data-mov]").forEach((b) => b.addEventListener("click", () => { RV.mov = b.dataset.mov; store.set("pfMov", RV.mov); router({ soft: true }); }));
+  if (!hs.length) return;
+  $("#rvEdit").addEventListener("click", () => { RV.edit = !RV.edit; router({ soft: true }); });
+  $("#rvCashRow").addEventListener("click", pfMore);
+  $$("[data-minus]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); const h = PF.list.find((x) => x.id === b.dataset.minus); if (h) pfAskRemove(h); }));
+  $$("[data-del]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); pfRemove(b.dataset.del); }));
+  $$("[data-open]").forEach((row) => {
+    const item = row.closest(".rv-item"), id = row.dataset.open;
+    row.addEventListener("click", () => {
+      if (item.classList.contains("sw")) { item.classList.remove("sw"); return; }
+      if (RV.edit) pfForm(PF.list.find((x) => x.id === id)); else pfDetail(id);
+    });
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter") pfDetail(id); });
+    // σύρσιμο αριστερά → εμφανίζεται το «Αφαίρεση»
+    let x0 = null, y0 = 0, dx = 0;
+    row.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; row.style.transition = "none"; }, { passive: true });
+    row.addEventListener("touchmove", (e) => { if (x0 === null) return; dx = e.touches[0].clientX - x0; const dy = e.touches[0].clientY - y0;
+      if (Math.abs(dy) > Math.abs(dx)) { x0 = null; row.style.transform = ""; return; }
+      const base = item.classList.contains("sw") ? -96 : 0; item.classList.toggle("drag", base + dx < -4); row.style.transform = `translateX(${Math.min(0, Math.max(-120, base + dx))}px)`; }, { passive: true });
+    row.addEventListener("touchend", () => { row.style.transition = ""; row.style.transform = ""; item.classList.remove("drag"); if (x0 === null) return; x0 = null;
+      if (dx < -40) { $$(".rv-item.sw").forEach((o) => o !== item && o.classList.remove("sw")); item.classList.add("sw"); } else if (dx > 30) item.classList.remove("sw"); });
+  });
+  // γράφημα πορείας (με τις σημερινές ποσότητες)
+  const box = $("#rvChartBox"), heroVal = $("#rvVal").innerHTML;
+  const draw = async () => {
+    let hist; try { hist = await pfHistory(p); } catch { hist = null; }
+    if (!$("#rvChartBox")) return;
+    const live = pfLivePoint(p, hist);
+    let pts = (hist?.pts || []).slice(-RV.range - 1);
+    if (live) pts = [...pts, live];
+    box.innerHTML = rvChart(pts) + (hist && hist.inc.length < hist.all ? `<div class="small muted rv-cnote">Το γράφημα περιέχει ${hist.inc.length} από ${hist.all} μετοχές (για τις άλλες δεν υπάρχει ιστορικό)</div>` : "");
+    const ch = $(".rv-chart", box); if (!ch || pts.length < 2) { $("#rvSub")?.setAttribute("hidden", ""); return; }
+    $("#rvSub")?.removeAttribute("hidden");
+    const first = pts[0][1], last = pts[pts.length - 1][1];
+    const rngTxt = { 5: "1 εβδομάδα", 21: "1 μήνας", 63: "3 μήνες", 126: "6 μήνες", 252: "1 χρόνος" }[RV.range] || "";
+    const setRange = () => { $("#rvChg").innerHTML = `${signedMoney(last - first)} ${arrowPct(first ? (last / first - 1) * 100 : null)} <span class="muted">· ${rngTxt}</span>`; };
+    setRange();
+    const cur = $(".rv-cur", ch), dot = $(".rv-dot", ch), a = pts.map((x) => x[1]), mn = Math.min(...a), mx = Math.max(...a), rg = mx - mn || 1;
+    const at = (clientX) => { const r = ch.getBoundingClientRect(), f = clamp((clientX - r.left) / r.width, 0, 1), i = Math.round(f * (pts.length - 1));
+      const [dd, v] = pts[i], x = (i / (pts.length - 1)) * r.width, y = r.height * (1 - (10 + ((v - mn) / rg) * (150 - 24)) / 150);
+      cur.hidden = dot.hidden = false; cur.style.left = `${x}px`; dot.style.left = `${x}px`; dot.style.top = `${y}px`;
+      $("#rvVal").innerHTML = bigMoney(v + cashUsd);
+      $("#rvChg").innerHTML = `${signedMoney(v - first)} ${arrowPct(first ? (v / first - 1) * 100 : null)} <span class="muted">${dday(String(dd))}</span>`; };
+    const off = () => { cur.hidden = dot.hidden = true; $("#rvVal").innerHTML = heroVal; setRange(); };
+    ch.addEventListener("pointermove", (e) => at(e.clientX));
+    ch.addEventListener("pointerdown", (e) => at(e.clientX));
+    ch.addEventListener("pointerleave", off); ch.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") off(); });
+    ch.addEventListener("touchmove", (e) => { at(e.touches[0].clientX); }, { passive: true });
+  };
+  $$("[data-rg]").forEach((b) => b.addEventListener("click", () => { RV.range = +b.dataset.rg; store.set("pfRange", RV.range); $$("[data-rg]").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+  draw();
+};

@@ -532,3 +532,81 @@ ol.plan-steps li b { color: var(--accent); font-size: 13px; }
 }
 .goal-plan .kv + .list, .goal-plan .kv + ul { margin-top: 10px; }
 .goal-plan .cmp + .small { margin-top: 6px; }
+
+/* ================================================================== Χαρτοφυλάκιο σε στυλ Revolut */
+.rv-hero { text-align: center; padding: 8px 0 0; }
+.rv-lbl { color: var(--text-2); font-size: 15px; font-weight: 550; }
+.rv-val { font-size: 46px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: 4px 0 2px; }
+.rv-val small { font-size: .5em; font-weight: 750; letter-spacing: 0; margin-left: 1px; }
+.rv-chg { font-size: 15px; font-weight: 600; min-height: 22px; }
+.rv-chart { position: relative; height: 150px; margin: 14px -16px 4px; color: #fff; touch-action: pan-y; cursor: crosshair; }
+:root[data-theme="light"] .rv-chart { color: var(--accent); }
+.rv-chart[data-up="0"] { color: color-mix(in srgb, var(--down) 70%, #fff); }
+:root[data-theme="light"] .rv-chart[data-up="0"] { color: var(--down); }
+.rv-chart svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 18px color-mix(in srgb, currentColor 40%, transparent)); }
+.rv-chart.empty { height: auto; padding: 24px 0; cursor: default; filter: none; }
+.rv-cur { position: absolute; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, currentColor 55%, transparent); }
+.rv-dot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 25%, transparent); }
+.rv-cnote { margin-top: 2px; }
+.rv-ranges { display: flex; justify-content: center; gap: 4px; margin-top: 6px; }
+.rv-ranges button { border: 0; background: none; color: var(--text-2); font-weight: 650; font-size: 13.5px; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.rv-ranges button.on { background: var(--glass, var(--card-2)); color: var(--text); border: 1px solid var(--glass-line, var(--line)); }
+.rv-acts { margin-top: 2px; }
+.rv-sec { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 6px; }
+.rv-sec b { font-size: 16px; }
+section.card > .rv-sec:first-child { padding-top: 2px; padding-left: 0; padding-right: 0; }
+section.card.flush > .rv-sec:first-child { padding: 14px 16px 6px; }
+.linkbtn { border: 0; background: none; color: var(--accent); font-weight: 650; font-size: 14.5px; cursor: pointer; padding: 4px 0; }
+.rv-item { position: relative; overflow: hidden; }
+.rv-item + .rv-item, .rv-list .rv-cashrow { border-top: 1px solid var(--line); }
+.rv-del { position: absolute; inset: 0 0 0 auto; width: 96px; border: 0; background: var(--down); color: #fff; font-weight: 700; font-size: 12.5px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.rv-item.sw .rv-del, .rv-item.drag .rv-del { opacity: 1; pointer-events: auto; }
+.rv-row { position: relative; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--card); transition: transform .2s ease; cursor: pointer; }
+.rv-row:active { background: var(--card-2); }
+.rv-item.sw .rv-row { transform: translateX(-96px); }
+.rv-minus { display: none; width: 24px; height: 24px; border-radius: 50%; border: 0; background: var(--down); color: #fff; font-size: 18px; font-weight: 800; line-height: 1; cursor: pointer; }
+.rv-list.edit .rv-minus { display: inline-flex; align-items: center; justify-content: center; }
+.rv-mid { min-width: 0; display: grid; gap: 2px; }
+.rv-mid b { font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-mid span { color: var(--text-2); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-right { display: grid; justify-items: end; gap: 2px; font-size: 13.5px; }
+.rv-right b { font-size: 15.5px; }
+.rv-cashrow { grid-template-columns: auto minmax(0, 1fr) auto; }
+.rv-cashlogo { background: var(--card-3) !important; color: var(--text); display: inline-flex; align-items: center; justify-content: center; }
+.rv-foot { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--text-2); }
+.rv-hint { padding: 0 16px 12px; }
+.rv-movers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 6px; margin-top: 14px; }
+.rv-movers a { display: grid; justify-items: center; gap: 4px; color: var(--text); font-size: 13px; text-decoration: none; min-width: 0; }
+.rv-movers a b { font-size: 13.5px; }
+.rv-movers .logo.lg, .rv-row .logo.lg { width: 44px; height: 44px; }
+.rv-movers .logo.lg { width: 52px; height: 52px; }
+/* κάτω φύλλο */
+.rv-bs { position: fixed; inset: 0; z-index: 70; }
+.rv-bs-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); animation: fade .18s ease-out; }
+.rv-bs-panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow: auto; background: #121726; border-radius: 24px 24px 0 0;
+  padding: 8px 18px calc(var(--safe-b, 0px) + 20px); box-shadow: 0 -20px 50px rgba(0, 0, 0, .35); animation: up .22s ease-out; }
+.rv-bs.out .rv-bs-panel { transform: translateY(30px); opacity: 0; transition: .18s ease-in; } .rv-bs.out .rv-bs-bg { opacity: 0; transition: .18s; }
+@media (min-width: 900px) { .rv-bs-panel { left: 50%; right: auto; width: 480px; transform: translateX(-50%); bottom: 24px; border-radius: 24px; } }
+.rv-grab { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--card-3); margin: 0 auto 12px; }
+.rv-detail, .rv-more, .rv-confirm { display: grid; gap: 12px; }
+.rv-dh { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.rv-dh b { display: block; font-size: 17px; }
+.rv-dval { font-size: 38px; font-weight: 800; letter-spacing: -.02em; }
+.rv-dval small { font-size: .5em; }
+.rv-dchg { font-size: 14.5px; font-weight: 600; margin-top: -6px; }
+.rv-advice { background: var(--card-2); border-radius: 16px; padding: 12px 14px; }
+.rv-advice.up { box-shadow: inset 3px 0 0 var(--up); } .rv-advice.down { box-shadow: inset 3px 0 0 var(--down); }
+.rv-advice ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); font-size: 14px; display: grid; gap: 4px; }
+.rv-confirm { justify-items: center; text-align: center; } .rv-confirm p { margin: 0; } .rv-confirm .btn { width: 100%; }
+.rv-mt { font-size: 18px; }
+.rv-cash { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.rv-undo { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b, 0px) + var(--tabbar, 64px) + 20px); z-index: 80;
+  display: flex; gap: 14px; align-items: center; background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 14px; font-size: 14.5px; box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.3)); }
+.rv-undo button { border: 0; background: none; color: var(--accent); font-weight: 800; cursor: pointer; }
+:root[data-theme="light"] .rv-undo button { color: #9bb8ff; }
+:root[data-theme="light"] .rv-bs-panel { background: #fff; }
+.rv-sub { font-size: 13.5px; color: var(--text-2); margin-top: 2px; }
+.rv-mfoot { margin-top: 12px; }
+@keyframes fade { from { opacity: 0; } }
