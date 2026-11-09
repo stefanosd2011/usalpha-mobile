@@ -570,6 +570,7 @@ routes.pf = async () => {
   if (PF.list.some((h) => !h.id)) PF.save(PF.list.map((h) => ({ ...h, id: h.id || Math.random().toString(36).slice(2, 9) })));
   const p = pfCalc(), hs = [...p.hs].sort((a, b) => (b.value || 0) - (a.value || 0));
   const cashUsd = toUsd(PF.cash) || 0, total = p.val + cashUsd;
+  RV.first = null; RV.heroLive = null; // οι ζωντανές τιμές (stream.js) ενημερώνουν αξία, σήμερα και γραμμές χωρίς νέο σχεδιασμό
   const dayPct = p.val - p.day > 0 ? (p.day / (p.val - p.day)) * 100 : null;
   const asOfTxt = Data.quotesAt ? `Τιμές ${dt(new Date(Data.quotesAt).toISOString())}` : `Κλείσιμο ${dday(d.asOf)}`;
   const acts = `<div class="actions rv-acts"><button class="act" id="pfAdd"><span class="c pri">${icon("plus")}</span>Προσθήκη</button>
@@ -641,6 +642,7 @@ routes.pf = async () => {
     $("#rvSub")?.removeAttribute("hidden");
     const first = pts[0][1], last = pts[pts.length - 1][1];
     const rngTxt = { 5: "1 εβδομάδα", 21: "1 μήνας", 63: "3 μήνες", 126: "6 μήνες", 252: "1 χρόνος" }[RV.range] || "";
+    RV.first = first; RV.rngTxt = rngTxt;
     const setRange = () => { $("#rvChg").innerHTML = `${signedMoney(last - first)} ${arrowPct(first ? (last / first - 1) * 100 : null)} <span class="muted">· ${rngTxt}</span>`; };
     setRange();
     const cur = $(".rv-cur", ch), dot = $(".rv-dot", ch), a = pts.map((x) => x[1]), mn = Math.min(...a), mx = Math.max(...a), rg = mx - mn || 1;
@@ -649,7 +651,7 @@ routes.pf = async () => {
       cur.hidden = dot.hidden = false; cur.style.left = `${x}px`; dot.style.left = `${x}px`; dot.style.top = `${y}px`;
       $("#rvVal").innerHTML = bigMoney(v + cashUsd);
       $("#rvChg").innerHTML = `${signedMoney(v - first)} ${arrowPct(first ? (v / first - 1) * 100 : null)} <span class="muted">${dday(String(dd))}</span>`; };
-    const off = () => { cur.hidden = dot.hidden = true; $("#rvVal").innerHTML = heroVal; setRange(); };
+    const off = () => { cur.hidden = dot.hidden = true; $("#rvVal").innerHTML = RV.heroLive || heroVal; setRange(); };
     ch.addEventListener("pointermove", (e) => at(e.clientX));
     ch.addEventListener("pointerdown", (e) => at(e.clientX));
     ch.addEventListener("pointerleave", off); ch.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") off(); });

@@ -140,7 +140,8 @@ const Data = {
       if (!j) return 0;
       if (!this.snap || !j.day || j.day <= (this.snap.asOf || "")) return 0;
       const ts = Date.parse(j.at); this.quotesAt = ts; this.quotesDay = j.day;
-      for (const [t, [p, c]] of Object.entries(j.q || {})) if (!App.quotes[t] || App.quotes[t].src === "cloud") App.quotes[t] = { price: p, chg: c, ts, src: "cloud" };
+      // η ζωντανή ροή (stream.js) κρατά τη νεότερη τιμή· το αρχείο του cloud μπαίνει μόνο αν είναι πιο πρόσφατο
+      for (const [t, [p, c]] of Object.entries(j.q || {})) { const o = App.quotes[t]; if (!o || o.src === "cloud" || (o.src === "stream" && o.ts < ts)) App.quotes[t] = { price: p, chg: c, ts, src: "cloud" }; }
       return Object.keys(j.q || {}).length;
     } catch { return 0; }
   },

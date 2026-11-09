@@ -610,3 +610,15 @@ section.card.flush > .rv-sec:first-child { padding: 14px 16px 6px; }
 .rv-sub { font-size: 13.5px; color: var(--text-2); margin-top: 2px; }
 .rv-mfoot { margin-top: 12px; }
 @keyframes fade { from { opacity: 0; } }
+
+/* ζωντανές τιμές (stream.js): σύντομο πράσινο/κόκκινο «άναμμα» σε κάθε νέα τιμή */
+.tk-up, .tk-down { border-radius: 6px; }
+.tk-up { animation: tkUp .9s ease-out; } .tk-down { animation: tkDown .9s ease-out; }
+@keyframes tkUp { 0% { background-color: var(--up-soft); color: var(--up); } 100% { background-color: transparent; } }
+@keyframes tkDown { 0% { background-color: var(--down-soft); color: var(--down); } 100% { background-color: transparent; } }
+.s-ext { margin-top: 8px; color: var(--text-2); }
+.s-ext b { color: var(--text); }
+/* στα μεγάλα ποσά: μόνο χρώμα (όχι φόντο σε όλο το πλάτος) */
+@keyframes tkUpC { 0% { color: var(--up); } } @keyframes tkDownC { 0% { color: var(--down); } }
+.rv-val.tk-up, .pf-val.tk-up, .price-big.tk-up, .h-val.tk-up { animation-name: tkUpC; background: none; }
+.rv-val.tk-down, .pf-val.tk-down, .price-big.tk-down, .h-val.tk-down { animation-name: tkDownC; background: none; }

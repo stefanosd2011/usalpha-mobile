@@ -74,9 +74,13 @@ const D = () => Data.snap;
 const validated = () => Object.entries(D()?.model || {}).filter(([, m]) => m.validated).map(([k]) => k);
 function saveWatch() { store.set("watch", App.watch); }
 const qTime = (q) => new Date(q.ts).toLocaleTimeString("el-GR", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hour12: false });
-const qChip = (q, asOf) => (q?.src === "finnhub" ? chip("Ζωντανή τιμή", "up") : q?.src === "cloud" ? chip(`Τιμή ${qTime(q)}`, "accent") : chip(`Κλείσιμο ${dshort(asOf)}`));
+const qClock = (q) => new Date(q.ts).toLocaleTimeString("el-GR", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const qChip = (q, asOf) => (q?.src === "stream" ? chip(`Ζωντανά ${qClock(q)}`, "up") : q?.src === "finnhub" ? chip("Ζωντανή τιμή", "up") : q?.src === "cloud" ? chip(`Τιμή ${qTime(q)}`, "accent") : chip(`Κλείσιμο ${dshort(asOf)}`));
 const curPx = (t, p) => App.quotes[t]?.price ?? p;
 const curCh = (t, c) => App.quotes[t]?.chg ?? c;
+// ζωντανές τιμές (stream.js): στοιχεία με data-lp (τιμή) / data-lc (μεταβολή) / data-lt (ώρα) ενημερώνονται μόνα τους σε κάθε νέα συναλλαγή
+const lpA = (t, f = "") => ` data-lp="${esc(t)}"${f ? ` data-lf="${f}"` : ""}`;
+const livePill = (t, c) => chgPill(c).replace("<span ", `<span data-lc="${esc(t)}" data-lf="pill" `);
 
 // ================================================================== router
 const routes = {};
@@ -117,7 +121,8 @@ function renderSession() {
   const s = now < T.pre ? "closed" : now < T.open ? "pre" : now < T.close ? "regular" : now < T.end ? "post" : "closed";
   const [title, sub, dot] = s === "regular" ? ["Ανοιχτή αγορά", `κλείνει σε ${left(T.close - now)}`, "live"] : s === "pre" ? ["Premarket", `ανοίγει σε ${left(T.open - now)}`, "pre"]
     : s === "post" ? ["After-hours", `τέλος σε ${left(T.end - now)}`, "pre"] : ["Κλειστή αγορά", `ανοίγει ${dayW()} ${ath(T.open)}`, ""];
-  $("#session").innerHTML = `<span class="dot ${dot}"></span><b>${title}</b><span>· ${sub}</span>`;
+  const live = typeof Stream === "object" && Stream.live();
+  $("#session").innerHTML = `<span class="dot ${dot || (live ? "live" : "")}"></span><b>${title}</b><span>· ${sub}</span>${live ? `<span class="up">· ζωντανές τιμές</span>` : ""}`;
 }
 
 // ================================================================== οι προβλέψεις μου (εταιρείες που διαλέγει ο χρήστης)
@@ -142,7 +147,7 @@ function myCard(t) {
   const r = Data.row(t) || { t, n: "", p: null, ch: null }, seen = store.get("mySeen", {}), fresh = D()?.asOf && seen[t] !== D().asOf;
   const a5 = rankOf(r, "rank5"), a21 = rankOf(r, "rank21");
   return `<a class="mp" href="#/s/${encodeURIComponent(t)}"><div class="mp-top">${logo(t)}<div style="min-width:0"><div class="tk">${esc(t)}</div><div class="nm">${esc(r.n || "")}</div></div>
-    <div class="px"><b class="num">${fmt(curPx(t, r.p))}</b>${chgPill(curCh(t, r.ch))}</div></div>
+    <div class="px"><b class="num"${lpA(t)}>${fmt(curPx(t, r.p))}</b>${livePill(t, curCh(t, r.ch))}</div></div>
     <div class="mp-row"><span>5 ημέρες</span>${rankBar(a5)}</div><div class="mp-row"><span>1 μήνας</span>${rankBar(a21)}</div>
     ${fresh ? `<div class="chips">${chip("Νέα πρόβλεψη", "accent")}</div>` : ""}</a>`;
 }
@@ -152,14 +157,14 @@ function rowItem(r, right = "chg") {
   const p = curPx(r.t, r.p), c = curCh(r.t, r.ch);
   const rt = right === "rv" ? `${fmt(r.rv, 1)}× όγκος` : right === "r5" ? topPct(r.r5) : right === "r21" ? topPct(r.r21) : right === "m1" ? pct(r.m1, 1) : right === "atr" ? `±${fmt(r.atr, 1)}%` : right === "s" ? `Score ${isNum(r.s) ? r.s.toFixed(0) : "—"}` : null;
   return `<a class="row" href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<div style="min-width:0"><div class="tk">${esc(r.t)}</div><div class="nm">${esc(r.n || "")}</div></div>
-    <div class="right"><b class="num">${fmt(p)}</b>${rt === null ? chgPill(c) : `<span class="small num ${right === "m1" ? cls(r.m1) : "soft"}">${rt}</span>`}</div></a>`;
+    <div class="right"><b class="num"${lpA(r.t)}>${fmt(p)}</b>${rt === null ? livePill(r.t, c) : `<span class="small num ${right === "m1" ? cls(r.m1) : "soft"}">${rt}</span>`}</div></a>`;
 }
 function tradeCard(s0, kind = "sig") {
   const s = SP(s0), cur = curPx(s.ticker, s.cur ?? s.price), chg = curCh(s.ticker, s.chg);
   const why = kind === "day" ? (s.reasons || []).slice(0, 2).join(". ") : s.setup;
   const status = { active: chip("Μέσα στη ζώνη εισόδου", "accent"), tp1: chip("Πιάστηκε στόχος 1", "up"), tp2: chip("Πιάστηκε στόχος 2", "up") }[s.status] || "";
   return `<a class="trade" href="#/s/${encodeURIComponent(s.ticker)}"><div class="t-top">${logo(s.ticker)}<div style="min-width:0"><div class="tk">${esc(s.ticker)} ${s.bias === "bearish" ? chip("Short", "down") : ""}</div><div class="nm">${esc(s.name || "")}</div></div>
-    <div class="px"><b class="num">${money(cur)}</b>${chgPill(chg)}</div></div>
+    <div class="px"><b class="num"${lpA(s.ticker, "m")}>${money(cur)}</b>${livePill(s.ticker, chg)}</div></div>
     ${why ? `<div class="why">${esc(why)}</div>` : ""}
     ${kind === "day" && Data.aiFor(s.ticker) ? `<div class="ai-line"><b>AI</b> ${esc(Data.aiFor(s.ticker))}</div>` : ""}
     <div class="levels"><div><small>Είσοδος</small><b class="num">${fmt(s.entryLow)}–${fmt(s.entryHigh)}</b></div><div class="st"><small>Stop</small><b class="num">${fmt(s.stop)}</b></div><div class="tg"><small>Στόχος</small><b class="num">${fmt(s.tp2)}</b></div></div>
@@ -190,8 +195,8 @@ routes.home = async () => {
   if (!d) { $("#view").innerHTML = `<div class="stack">${freshness()}</div>`; return; }
   const m = d.market || {}, R = REGIME[m.regime] || { tone: "neutral", head: "—", long: "Αγορά" };
   const spy = d.idx?.SPY || {}, q = App.quotes.SPY, sp = q?.price ?? spy.p, sc = q?.chg ?? spy.ch;
-  const hero = `<section class="hero">${spark(spy.sp, { w: 200, h: 80, cls: "h-spark" })}<div class="h-lbl">S&P 500 (SPY) · ${q ? `τιμή ${qTime(q)}` : `κλείσιμο ${dshort(d.asOf)}`}</div>
-    <div class="h-val num">${fmt(sp)}</div><div class="h-chg num">${pct(sc)}</div>
+  const hero = `<section class="hero">${spark(spy.sp, { w: 200, h: 80, cls: "h-spark" })}<div class="h-lbl">S&P 500 (SPY) · <span data-lt="SPY">${q ? (q.src === "stream" ? `ζωντανά ${qClock(q)}` : `τιμή ${qTime(q)}`) : `κλείσιμο ${dshort(d.asOf)}`}</span></div>
+    <div class="h-val num"${lpA("SPY")}>${fmt(sp)}</div><div class="h-chg num" data-lc="SPY" data-lf="txt">${pct(sc)}</div>
     <div class="h-mood">Διάθεση αγοράς: ${R.head} ${isNum(m.score) ? `(${m.score.toFixed(0)}/100)` : ""}<small>${esc((m.simple || [])[0] || R.long)}</small></div>
     <div class="meter"><i style="width:${clamp(m.score ?? 0)}%"></i></div></section>`;
   const actions = `<div class="actions"><button class="act" data-go="#/day"><span class="c pri">${icon("bolt")}</span>Day trade</button><button class="act" data-go="#/signals"><span class="c">${icon("target")}</span>Ευκαιρίες</button>
@@ -206,7 +211,7 @@ routes.home = async () => {
   const sig = d.signals || [];
   const opps = `${sec("Οι καλύτερες ευκαιρίες", sig.length > 3 ? `<a class="more" href="#/signals">Όλες (${sig.length})</a>` : "")}${sig.length ? `<div class="stack" style="gap:12px">${sig.slice(0, 3).map((s) => tradeCard(s)).join("")}</div>` : card(emptyBox("Καμία ευκαιρία σήμερα", "Η αναμονή είναι κι αυτή θέση."))}`;
   const tiles = `<div class="hscroll sm">${[["QQQ", "Nasdaq 100"], ["DIA", "Dow Jones"], ["IWM", "Russell 2000"], ["^VIX", "VIX (φόβος)"]].map(([t, n]) => { const x = d.idx?.[t]; const qq = App.quotes[t];
-    return `<a class="tile" href="#/s/${encodeURIComponent(t)}"><div class="t-name">${n}</div><div class="t-val num">${fmt(qq?.price ?? x?.p)}</div><div class="t-chg num ${cls(qq?.chg ?? x?.ch)}">${pct(qq?.chg ?? x?.ch)}</div>${spark(x?.sp)}</a>`; }).join("")}</div>`;
+    return `<a class="tile" href="#/s/${encodeURIComponent(t)}"><div class="t-name">${n}</div><div class="t-val num"${lpA(t)}>${fmt(qq?.price ?? x?.p)}</div><div class="t-chg num ${cls(qq?.chg ?? x?.ch)}" data-lc="${esc(t)}" data-lf="pct">${pct(qq?.chg ?? x?.ch)}</div>${spark(x?.sp)}</a>`; }).join("")}</div>`;
   const val = validated(), rk = val.find((h) => h === "rank5" || h === "rank21"), rkey = rk === "rank5" ? "r5" : "r21";
   const model = rk ? `${sec("Τι βλέπει το μοντέλο")}${card(d.rows.filter((r) => isNum(r[rkey])).sort((a, b) => b[rkey] - a[rkey]).slice(0, 6).map((r) => rowItem(r, rkey)).join(""), "flush")}` : "";
   const mvTab = store.get("movers", "up"), liquid = (d.rows || []).filter((r) => (r.dv || 0) >= 5e6);
@@ -502,7 +507,7 @@ routes.my = async () => {
     const SHORT = { day: "Day trade αύριο", short: "Στόχος σε 5 ημέρες", swing: "Στόχος σε 25 ημέρες" };
     const lines = a ? ["day", "short", "swing"].map((h) => [h, predPick(a, h)]).filter(([, x]) => x).map(([h, { p, ver }]) => `<li><span><b>${SHORT[h]}:</b> ${esc(predVal(p))} πιθανότητα να πιάσει τον στόχο πριν το stop${isNum(p.breakeven) ? ` (χρειάζεται >${Math.round(p.breakeven * 100)}%)` : ""} ${ver === "v4" ? chip("v4", "accent") : ""}${p.validated ? chip("επικυρωμένο", "up") : ""}</span></li>`).join("") : "";
     ph.outerHTML = card(`<div class="mp-top" style="margin-bottom:10px">${logo(t)}<div style="min-width:0"><div class="tk">${esc(t)}</div><div class="nm">${esc(r.n || a?.name || "")}</div></div>
-      <div class="px"><b class="num">${fmt(curPx(t, r.p ?? a?.price))}</b>${chgPill(curCh(t, r.ch ?? a?.chg))}</div></div>
+      <div class="px"><b class="num"${lpA(t)}>${fmt(curPx(t, r.p ?? a?.price))}</b>${livePill(t, curCh(t, r.ch ?? a?.chg))}</div></div>
       <div class="mp-row"><span>5 ημέρες</span>${rankBar(a5)}</div><div class="mp-row"><span>1 μήνας</span>${rankBar(a21)}</div>
       <p class="soft" style="margin:10px 0 0">${esc(myVerdict(a5, a21))}</p>
       ${lines ? `<ul class="list" style="margin-top:8px">${lines}</ul>` : `<div class="small muted" style="margin-top:8px">${a ? "" : "Η εταιρεία δεν είναι στη σημερινή ανάλυση (πολύ μικρός τζίρος ή χωρίς τιμές)."}</div>`}
@@ -657,7 +662,7 @@ async function openSearch(onPick = null) {
       hits.sort((a, b) => b[1] - a[1] || (b[0].dv || 0) - (a[0].dv || 0)); hits = hits.slice(0, 30).map((h) => h[0]);
       if (/^[A-Z^][A-Z0-9.\-]{0,9}$/.test(Q) && !hits.some((h) => h.t === Q)) hits.push({ t: Q, n: "Δοκίμασε αυτό το σύμβολο" }); }
     else hits = [...new Set([...store.get("recent", []), ...App.watch])].slice(0, 14).map((t) => Data.row(t) || { t, n: "" });
-    $("#sRes", sh).innerHTML = hits.map((r) => `<a href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<span style="min-width:0"><b>${esc(r.t)}</b><span class="nm">${esc(r.n || "")}</span></span><span class="num">${isNum(curPx(r.t, r.p)) ? fmt(curPx(r.t, r.p)) : ""}</span></a>`).join("") || `<div class="empty">Τίποτα δεν ταιριάζει</div>`;
+    $("#sRes", sh).innerHTML = hits.map((r) => `<a href="#/s/${encodeURIComponent(r.t)}">${logo(r.t)}<span style="min-width:0"><b>${esc(r.t)}</b><span class="nm">${esc(r.n || "")}</span></span><span class="num"${lpA(r.t)}>${isNum(curPx(r.t, r.p)) ? fmt(curPx(r.t, r.p)) : ""}</span></a>`).join("") || `<div class="empty">Τίποτα δεν ταιριάζει</div>`;
   };
   $("#sRes", sh).addEventListener("click", (e) => { const a = e.target.closest("a"); if (!a) return;
     const t = decodeURIComponent(a.getAttribute("href").replace("#/s/", "")); store.set("recent", [t, ...store.get("recent", []).filter((x) => x !== t)].slice(0, 8));
