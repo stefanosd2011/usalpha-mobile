@@ -1,0 +1,116 @@
+# «Ρολόι»: το δικό μας χρονόμετρο, γιατί το προγραμματισμένο (cron) του GitHub συχνά καθυστερεί ώρες ή δεν τρέχει καθόλου.
+# Κάθε ~60′ (αναμονή του περιβάλλοντος «clock», που ΔΕΝ πιάνει μηχάνημα όσο περιμένει) ελέγχει τι πρέπει να τρέχει
+# και το ξεκινά, και μετά ξεκινά τον επόμενο χτύπο του εαυτού του. Έτσι τίποτα δεν εξαρτάται από τον υπολογιστή σου:
+#   • ζωντανές τιμές όσο είναι ανοιχτή η αγορά ΗΠΑ (από 08:00 ώρα Ν. Υόρκης),
+#   • η ανάλυση μετά από κάθε συνεδρίαση (ξημερώματα Ν. Υόρκης) και η βαθιά εκπαίδευση το Σαββατοκύριακο,
+#   • οι ενημερώσεις AI (πρωί · πριν το άνοιγμα · βράδυ).
+# Τα προγραμματισμένα του GitHub μένουν ως εφεδρεία· αν ήδη τρέχει κάτι, δεν ξεκινά δεύτερο.
+name: Ρολόι
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 */3 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: clock
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: clock
+    steps:
+      - name: Τι πρέπει να τρέχει τώρα
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, datetime as dt
+          from zoneinfo import ZoneInfo
+          NY, GR, UTC = ZoneInfo("America/New_York"), ZoneInfo("Europe/Athens"), dt.timezone.utc
+          now = dt.datetime.now(UTC); ny = now.astimezone(NY); gr = now.astimezone(GR)
+          wd, hm = ny.weekday(), ny.hour * 60 + ny.minute
+          print(f"Ν. Υόρκη {ny:%a %d/%m %H:%M} · Ελλάδα {gr:%H:%M}")
+
+          def gh(*a):
+              r = subprocess.run(["gh", *a], capture_output=True, text=True)
+              if r.returncode:
+                  print("gh:", " ".join(a[:3]), r.stderr.strip()[-200:])
+              return r.stdout
+
+          def runs(wf, n=10):
+              try:
+                  return json.loads(gh("run", "list", "--workflow", wf, "--limit", str(n), "--json", "status,createdAt,event,databaseId") or "[]")
+              except Exception:
+                  return []
+
+          def ts(s):
+              return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+          def active(rs):
+              return [r for r in rs if r.get("status") in ("queued", "in_progress", "waiting", "pending", "requested")]
+
+          def start(wf, **inputs):
+              a = ["workflow", "run", wf]
+              for k, v in inputs.items():
+                  a += ["-f", f"{k}={v}"]
+              gh(*a)
+              print("→ ξεκίνησε:", wf, inputs or "")
+
+          trading = wd < 5  # αργίες: οι ίδιες οι εργασίες το καταλαβαίνουν και σταματούν αμέσως
+
+          # 1) ζωντανές τιμές όσο είναι ανοιχτή η αγορά (ξεκινά λίγο νωρίτερα και περιμένει το άνοιγμα)
+          if trading and 8 * 60 <= hm < 16 * 60 + 5:
+              if not active(runs("live.yml", 5)):
+                  start("live.yml")
+
+          # 2) ανάλυση: Τρ.–Σάβ. για την προηγούμενη συνεδρίαση· Σάββατο (2η) και Κυριακή βαθιά εκπαίδευση
+          day0 = ny.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+          ur = runs("update.yml", 15)
+          today = [r for r in ur if ts(r["createdAt"]) >= day0]
+          if not active(ur):
+              if 1 <= wd <= 5 and hm >= 60 and not today:
+                  start("update.yml")
+              elif wd == 5 and hm >= 7 * 60 and len(today) == 1:
+                  start("update.yml", deep="true")
+              elif wd == 6 and hm >= 3 * 60 and not today:
+                  start("update.yml", deep="true")
+
+          # 3) ενημερώσεις AI: μία φορά σε κάθε «παράθυρο»
+          win = None
+          if trading:
+              if hm < 8 * 60 and 9 <= gr.hour < 13:
+                  win = gr.replace(hour=9, minute=0, second=0, microsecond=0)
+              elif 8 * 60 <= hm < 9 * 60 + 30:
+                  win = ny.replace(hour=8, minute=0, second=0, microsecond=0)
+              elif 16 * 60 <= hm < 21 * 60:
+                  win = ny.replace(hour=16, minute=0, second=0, microsecond=0)
+          if win:
+              nr = runs("notes.yml", 6)
+              last = max((ts(r["createdAt"]) for r in nr), default=None)
+              if not active(nr) and (last is None or last < win.astimezone(UTC)):
+                  start("notes.yml", slot="auto")
+
+          # 4) ο επόμενος χτύπος (αν δεν περιμένει ήδη κάποιος). Ασφάλεια: αν αυτός ο χτύπος ΔΕΝ περίμενε ~60′
+          # (π.χ. λείπει η αναμονή του περιβάλλοντος «clock»), δεν ξεκινά άλλον, για να μη γίνει γρήγορος κύκλος.
+          try:
+              me = json.loads(gh("run", "view", os.environ["RUN_ID"], "--json", "createdAt") or "{}")
+              waited = (now - ts(me["createdAt"])).total_seconds() / 60
+          except Exception:
+              waited = 0
+          others = [r for r in active(runs("clock.yml", 5)) if str(r.get("databaseId")) != os.environ["RUN_ID"]]
+          if waited < 40:
+              print(f"Αυτός ο χτύπος περίμενε μόνο {waited:.0f}′: δεν ξεκινά επόμενος (λείπει η αναμονή 60′ του περιβάλλοντος clock;)")
+          elif not others:
+              start("clock.yml")
+          else:
+              print("Ο επόμενος χτύπος υπάρχει ήδη")
+          PY

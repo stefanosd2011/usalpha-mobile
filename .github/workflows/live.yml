@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: live-quotes
@@ -41,4 +42,18 @@ jobs:
         run: |
           mkdir -p eng && tar -xzf engine.tgz -C eng
           pip install --disable-pip-version-check -q "yfinance==1.7.0" pandas httpx tzdata python-dotenv
+          t0=$(date +%s)
           python eng/tools/live_quotes.py --minutes 340 --every 150
+          # έφτασε το όριο χρόνου ενώ η αγορά είναι ακόμα ανοιχτή → συνέχεια χωρίς κενό
+          # (μόνο αν έτρεξε πάνω από 1 ώρα, ώστε σε αργία/πριν το άνοιγμα να μη γίνει ατέρμονος κύκλος)
+          if [ $(( $(date +%s) - t0 )) -gt 3600 ] && [ "$(TZ=America/New_York date +%u)" -le 5 ] && [ "$(TZ=America/New_York date +%H%M)" -lt 1600 ]; then
+            gh workflow run live.yml && echo "Συνέχεια: ξεκίνησε νέο run"
+          fi
+
+      - name: Το «Ρολόι» μένει ζωντανό
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          n=$(gh run list --workflow clock.yml --limit 5 --json status --jq '[.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending")] | length' || echo 1)
+          if [ "${n:-1}" = "0" ]; then gh workflow run clock.yml && echo "Ξεκίνησε το Ρολόι"; fi

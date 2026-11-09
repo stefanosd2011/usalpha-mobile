@@ -26,6 +26,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: pages
@@ -122,6 +123,14 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      - name: Το «Ρολόι» μένει ζωντανό
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          n=$(gh run list --workflow clock.yml --limit 5 --json status --jq '[.[] | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending")] | length' || echo 1)
+          if [ "${n:-1}" = "0" ]; then gh workflow run clock.yml && echo "Ξεκίνησε το Ρολόι"; fi
 
       - name: Το χρονοδιάγραμμα μένει ενεργό
         if: github.event_name == 'schedule'
